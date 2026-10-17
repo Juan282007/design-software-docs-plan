@@ -1,0 +1,877 @@
+openapi: 3.1.0
+info:
+  title: IAM Service API — Horarios SENA
+  version: 1.0.0
+  description: >-
+    Autenticación (JWT RS256/JWKS), gestión de usuarios, roles/features (RBAC
+    feature+scope), sesiones, overrides de scope y reporte de auditoría de login.
+    Fuente de verdad del contrato. Alineado con el modelo de datos de iam-service
+    y con 07-api/guidelines.md. La extensión `x-required-feature` declara el feature
+    RBAC que exige cada operación.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: auth
+    description: Autenticación y sesión.
+  - name: users
+    description: Gestión de cuentas de usuario.
+  - name: sessions
+    description: Sesiones activas de usuario (tokens de refresco vigentes).
+  - name: roles
+    description: Roles, features y asignaciones.
+  - name: modules
+    description: Catálogo de módulos y features (solo lectura).
+  - name: reports
+    description: Reportes propios del dominio IAM.
+
+paths:
+  # ---------------------------------------------------------------- auth
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Autentica con email y contraseña.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Autenticación exitosa; devuelve tokens y usuario con features.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      tags: [auth]
+      summary: Renueva el access_token con el refresh_token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: Nuevo access_token (mismo refresh_token).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Revoca el refresh_token activo de la sesión.
+      responses:
+        '204':
+          description: Sesión cerrada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Usuario autenticado con sus features y módulos calculados.
+      responses:
+        '200':
+          description: Perfil del usuario autenticado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeResponse' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+
+  /auth/password-reset/request:
+    post:
+      operationId: requestPasswordReset
+      tags: [auth]
+      summary: Solicita un token de reset por email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordResetRequest' }
+      responses:
+        '202':
+          description: Aceptado. Siempre 202 (no revela si el email existe).
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /auth/password-reset/confirm:
+    post:
+      operationId: confirmPasswordReset
+      tags: [auth]
+      summary: Confirma el reset con el token recibido.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordResetConfirm' }
+      responses:
+        '204':
+          description: Contraseña actualizada.
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+
+  # ---------------------------------------------------------------- users
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: Lista paginada de usuarios.
+      x-required-feature: IDENTITY_USER_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: training_center_id
+          in: query
+          required: false
+          description: Filtra por centro de formación.
+          schema: { type: string, format: uuid }
+        - name: role
+          in: query
+          required: false
+          description: Filtra por nombre de rol.
+          schema: { type: string }
+        - name: is_active
+          in: query
+          required: false
+          description: Filtra por estado de la cuenta.
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de usuarios.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Crea un usuario y devuelve su contraseña temporal.
+      x-required-feature: IDENTITY_USER_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreate' }
+      responses:
+        '201':
+          description: Usuario creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserCreateResponse' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Detalle de un usuario.
+      x-required-feature: IDENTITY_USER_VIEW
+      responses:
+        '200':
+          description: Usuario.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateUser
+      tags: [users]
+      summary: Actualiza datos del usuario (no contraseña).
+      x-required-feature: IDENTITY_USER_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdate' }
+      responses:
+        '200':
+          description: Usuario actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /users/{id}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      operationId: deactivateUser
+      tags: [users]
+      summary: Desactiva la cuenta (soft delete) y revoca sus sesiones.
+      x-required-feature: IDENTITY_USER_MANAGE
+      responses:
+        '204':
+          description: Cuenta desactivada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /users/{id}/sessions:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      operationId: listUserSessions
+      tags: [sessions]
+      summary: Sesiones activas (refresh tokens vigentes) del usuario.
+      x-required-feature: IDENTITY_USER_VIEW
+      responses:
+        '200':
+          description: Lista de sesiones activas.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /users/{id}/sessions/{session_id}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - name: session_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: revokeUserSession
+      tags: [sessions]
+      summary: Revoca una sesión específica del usuario.
+      x-required-feature: IDENTITY_USER_VIEW
+      responses:
+        '204':
+          description: Sesión revocada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /users/{id}/roles:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      operationId: assignUserRole
+      tags: [roles]
+      summary: Asigna un rol a un usuario (opcionalmente por centro).
+      x-required-feature: IDENTITY_ROLE_ASSIGN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignRoleRequest' }
+      responses:
+        '201':
+          description: Rol asignado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserRole' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  /users/{id}/roles/{role_name}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - name: role_name
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      operationId: revokeUserRole
+      tags: [roles]
+      summary: Revoca un rol de un usuario.
+      x-required-feature: IDENTITY_ROLE_ASSIGN
+      responses:
+        '204':
+          description: Rol revocado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /users/{id}/scope-overrides:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      operationId: listScopeOverrides
+      tags: [roles]
+      summary: Overrides de scope activos del usuario.
+      x-required-feature: IDENTITY_SCOPE_MANAGE
+      responses:
+        '200':
+          description: Lista de overrides.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ScopeOverride' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: createScopeOverride
+      tags: [roles]
+      summary: Crea un override de acceso para el usuario.
+      x-required-feature: IDENTITY_SCOPE_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScopeOverrideCreate' }
+      responses:
+        '201':
+          description: Override creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScopeOverride' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /users/{id}/scope-overrides/{override_id}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - name: override_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: revokeScopeOverride
+      tags: [roles]
+      summary: Revoca un override de scope.
+      x-required-feature: IDENTITY_SCOPE_MANAGE
+      responses:
+        '204':
+          description: Override revocado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- roles / modules
+  /roles:
+    get:
+      operationId: listRoles
+      tags: [roles]
+      summary: Lista de roles con sus features y scopes.
+      x-required-feature: IDENTITY_ROLE_VIEW
+      responses:
+        '200':
+          description: Lista de roles.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Role' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+  /roles/{id}/features:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listRoleFeatures
+      tags: [roles]
+      summary: Features asignados a un rol con su scope_type.
+      x-required-feature: IDENTITY_ROLE_VIEW
+      responses:
+        '200':
+          description: Features del rol.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RoleFeature' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /modules:
+    get:
+      operationId: listModules
+      tags: [modules]
+      summary: Módulos del sistema con sus features.
+      x-required-feature: IDENTITY_ROLE_VIEW
+      responses:
+        '200':
+          description: Lista de módulos con features.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Module' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+  # ---------------------------------------------------------------- reports (own domain)
+  /reports/login-audit:
+    get:
+      operationId: reportLoginAudit
+      tags: [reports]
+      summary: Auditoría de intentos de login (paginación por cursor).
+      description: >-
+        Reporte propio del dominio IAM sobre la tabla `audit_login`. Solo lectura.
+        Usa paginación por cursor por ser una colección grande/continua (guidelines §6).
+        Inventario — Usuarios: seguridad/administración; Frecuencia: on-demand;
+        Formato: JSON; Fuente: `identity_audit.audit_login`.
+      x-required-feature: AUDIT_LOG_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/cursor'
+        - $ref: '_shared.yaml#/components/parameters/limit'
+        - name: user_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: email
+          in: query
+          required: false
+          description: Filtra por email intentado.
+          schema: { type: string, format: email }
+        - name: outcome
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [SUCCESS, INVALID_PASSWORD, USER_NOT_FOUND, ACCOUNT_LOCKED, TOKEN_EXPIRED]
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango (inclusive).
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango (exclusive).
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Página de eventos de login.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/LoginAuditEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/CursorPagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+  /health:
+    get:
+      operationId: health
+      tags: [health]
+      summary: Liveness probe del servicio.
+      security: []
+      responses:
+        '200':
+          description: Servicio vivo.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /ready:
+    get:
+      operationId: ready
+      tags: [health]
+      summary: Readiness probe del servicio.
+      security: []
+      responses:
+        '200':
+          description: Dependencias listas.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '503':
+          description: Alguna dependencia no está lista.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /auth/.well-known/jwks.json:
+    get:
+      operationId: getJwks
+      tags: [auth]
+      summary: Publica el JWKS vigente para validar access tokens emitidos por IAM.
+      security: []
+      responses:
+        '200':
+          description: Conjunto de llaves públicas JSON Web Key Set.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+components:
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: UUID del usuario.
+      schema: { type: string, format: uuid }
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, writeOnly: true, minLength: 8 }
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+
+    TokenResponse:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_in, user]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer, description: Segundos de vida del access_token., example: 900 }
+        user: { $ref: '#/components/schemas/AuthUser' }
+
+    AuthUser:
+      type: object
+      required: [id, email, full_name, roles, features]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        full_name: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+        training_center_id:
+          type: [string, 'null']
+          format: uuid
+        features:
+          type: array
+          items: { type: string }
+
+    MeResponse:
+      type: object
+      required: [id, email, full_name, actor_type, roles, features, modules]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        full_name: { type: string }
+        actor_type:
+          type: string
+          enum: [USER, INSTRUCTOR, LEARNER]
+        actor_id:
+          type: [string, 'null']
+          format: uuid
+        roles:
+          type: array
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
+              training_center_id:
+                type: [string, 'null']
+                format: uuid
+        features:
+          type: array
+          items: { type: string }
+        modules:
+          type: array
+          items: { type: string }
+
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+
+    PasswordResetConfirm:
+      type: object
+      required: [token, new_password]
+      properties:
+        token: { type: string }
+        new_password: { type: string, writeOnly: true, minLength: 8 }
+
+    User:
+      type: object
+      required: [id, email, first_name, last_name, actor_type, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        first_name: { type: string, maxLength: 100 }
+        last_name: { type: string, maxLength: 100 }
+        full_name:
+          type: string
+          readOnly: true
+          description: Derivado de first_name + last_name.
+        actor_type:
+          type: string
+          enum: [USER, INSTRUCTOR, LEARNER]
+        actor_id:
+          type: [string, 'null']
+          format: uuid
+          description: Referencia lógica al actor en actors-service (sin FK física).
+        is_active: { type: boolean }
+        last_login_at:
+          type: [string, 'null']
+          format: date-time
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    UserCreate:
+      type: object
+      required: [email, first_name, last_name, actor_type]
+      properties:
+        email: { type: string, format: email }
+        first_name: { type: string, maxLength: 100 }
+        last_name: { type: string, maxLength: 100 }
+        actor_type:
+          type: string
+          enum: [USER, INSTRUCTOR, LEARNER]
+        actor_id:
+          type: [string, 'null']
+          format: uuid
+        initial_role: { type: string, description: Nombre del rol inicial a asignar. }
+        training_center_id:
+          type: [string, 'null']
+          format: uuid
+
+    UserCreateResponse:
+      type: object
+      required: [id, email]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        temporary_password:
+          type: string
+          writeOnly: true
+          description: Contraseña temporal; también se envía al email del usuario.
+
+    UserUpdate:
+      type: object
+      properties:
+        first_name: { type: string, maxLength: 100 }
+        last_name: { type: string, maxLength: 100 }
+        actor_type:
+          type: string
+          enum: [USER, INSTRUCTOR, LEARNER]
+        actor_id:
+          type: [string, 'null']
+          format: uuid
+        is_active: { type: boolean }
+
+    Session:
+      type: object
+      required: [id, created_at, expires_at, is_revoked]
+      properties:
+        id: { type: string, format: uuid }
+        device_hint:
+          type: [string, 'null']
+          description: User-agent resumido.
+        ip_address:
+          type: [string, 'null']
+          description: IP de origen (PII).
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        is_revoked: { type: boolean }
+        revoked_at:
+          type: [string, 'null']
+          format: date-time
+
+    AssignRoleRequest:
+      type: object
+      required: [role_name]
+      properties:
+        role_name: { type: string }
+        training_center_id:
+          type: [string, 'null']
+          format: uuid
+          description: null = rol global; UUID = restringido al centro.
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+
+    UserRole:
+      type: object
+      required: [id, user_id, role_id, assigned_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        role_id: { type: string, format: uuid }
+        role_name: { type: string }
+        training_center_id:
+          type: [string, 'null']
+          format: uuid
+        assigned_by: { type: string, format: uuid }
+        assigned_at: { type: string, format: date-time }
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+
+    Role:
+      type: object
+      required: [id, name, display_name, is_system_role, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 50 }
+        display_name: { type: string, maxLength: 100 }
+        description:
+          type: [string, 'null']
+        is_system_role: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    RoleFeature:
+      type: object
+      required: [feature_code, scope_type]
+      properties:
+        feature_code: { type: string }
+        feature_name: { type: string }
+        action_level:
+          type: string
+          enum: [READ, WRITE, DELETE, PUBLISH, APPROVE]
+        scope_type:
+          type: string
+          enum: [GLOBAL, TRAINING_CENTER, AREA, OWN_FICHAS, OWN_SCHEDULE, OWN_PROFILE, OWN_FICHA_AS_LEARNER]
+
+    Module:
+      type: object
+      required: [code, name, features]
+      properties:
+        code: { type: string, maxLength: 30 }
+        name: { type: string, maxLength: 100 }
+        description:
+          type: [string, 'null']
+        display_order: { type: integer }
+        icon_key:
+          type: [string, 'null']
+        features:
+          type: array
+          items: { $ref: '#/components/schemas/Feature' }
+
+    Feature:
+      type: object
+      description: Feature RBAC de un módulo (vista completa).
+      required: [code, name, action_level, scope_type]
+      properties:
+        code: { type: string, maxLength: 60 }
+        name: { type: string, maxLength: 120 }
+        action_level:
+          type: string
+          enum: [READ, WRITE, DELETE, PUBLISH, APPROVE]
+        scope_type:
+          type: string
+          enum: [GLOBAL, TRAINING_CENTER, AREA, OWN_FICHAS, OWN_SCHEDULE, OWN_PROFILE, OWN_FICHA_AS_LEARNER]
+        description:
+          type: [string, 'null']
+
+    ScopeOverride:
+      type: object
+      required: [id, feature_code, scope_type, is_allowed, reason, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        feature_code: { type: string }
+        scope_type:
+          type: string
+          enum: [GLOBAL, TRAINING_CENTER, AREA, OWN_FICHAS, OWN_SCHEDULE, OWN_PROFILE, OWN_FICHA_AS_LEARNER]
+        is_allowed:
+          type: boolean
+          description: true = acceso adicional; false = bloqueo explícito.
+        reason: { type: string }
+        granted_by: { type: string, format: uuid }
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+        created_at: { type: string, format: date-time }
+
+    ScopeOverrideCreate:
+      type: object
+      required: [feature_code, scope_type, is_allowed, reason]
+      properties:
+        feature_code: { type: string }
+        scope_type:
+          type: string
+          enum: [GLOBAL, TRAINING_CENTER, AREA, OWN_FICHAS, OWN_SCHEDULE, OWN_PROFILE, OWN_FICHA_AS_LEARNER]
+        is_allowed: { type: boolean }
+        reason: { type: string }
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+
+    LoginAuditEntry:
+      type: object
+      required: [id, email_attempted, outcome, attempted_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id:
+          type: [string, 'null']
+          format: uuid
+          description: null si el email no existe.
+        email_attempted: { type: string, format: email }
+        outcome:
+          type: string
+          enum: [SUCCESS, INVALID_PASSWORD, USER_NOT_FOUND, ACCOUNT_LOCKED, TOKEN_EXPIRED]
+        ip_address:
+          type: [string, 'null']
+        user_agent:
+          type: [string, 'null']
+        attempted_at: { type: string, format: date-time }
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT RS256 emitido por iam-service; verificado localmente vía JWKS.
+
+
+

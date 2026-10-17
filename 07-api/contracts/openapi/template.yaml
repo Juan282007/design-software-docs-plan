@@ -1,0 +1,381 @@
+openapi: 3.1.0
+info:
+  title: Document Template API — Horarios SENA
+  version: 1.0.0
+  description: >-
+    Plantillas de generación de documentos (HTML/Handlebars) usadas por el
+    document-service para producir PDF/EXCEL/WORD: CRUD de `document_template`,
+    resolución por `code` (consumida por workers), previsualización de
+    renderizado y reporte de uso de plantillas. Fuente de verdad del contrato.
+    Alineado con el modelo de datos de document-service y con
+    07-api/guidelines.md. La extensión `x-required-feature` declara el feature
+    RBAC que exige cada operación (ver rbac-design.md, módulo `MOD_DOCUMENTS`).
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: templates
+    description: Plantillas de documentos (document_template).
+  - name: reports
+    description: Reportes propios del dominio de plantillas.
+
+paths:
+  # ---------------------------------------------------------------- document-templates
+  /document-templates:
+    get:
+      operationId: listDocumentTemplates
+      tags: [templates]
+      summary: Lista paginada de plantillas (sin template_body).
+      x-required-feature: DOC_TEMPLATE_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: output_type
+          in: query
+          required: false
+          description: Filtra por tipo de salida de la plantilla.
+          schema:
+            type: string
+            enum: [PDF, EXCEL, WORD]
+        - name: code
+          in: query
+          required: false
+          description: Filtra por código exacto (ej. SCHEDULE_CERTIFICATE).
+          schema: { type: string, maxLength: 50 }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de plantillas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/DocumentTemplateListItem' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createDocumentTemplate
+      tags: [templates]
+      summary: Crea una plantilla de documento (version = 1, is_active = true).
+      x-required-feature: DOC_TEMPLATE_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentTemplateCreate' }
+      responses:
+        '201':
+          description: Plantilla creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentTemplate' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /document-templates/{id}:
+    get:
+      operationId: getDocumentTemplate
+      tags: [templates]
+      summary: Detalle de una plantilla por id o code, incluye template_body.
+      description: >-
+        `id` acepta el UUID de la plantilla o su `code` único (ej.
+        SCHEDULE_CERTIFICATE, ENROLLMENT_RECORD); esto permite a los workers
+        de renderizado resolver la plantilla por code sin una ruta adicional.
+      x-required-feature: DOC_TEMPLATE_VIEW
+      parameters:
+        - $ref: '#/components/parameters/DocumentTemplateIdOrCode'
+      responses:
+        '200':
+          description: Plantilla.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentTemplate' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateDocumentTemplate
+      tags: [templates]
+      summary: Actualiza una plantilla; incrementa document_template.version.
+      description: >-
+        El versionado de la plantilla es independiente del historial de
+        `document_version`: los documentos ya generados conservan su binario;
+        solo las generaciones posteriores usan la nueva versión.
+      x-required-feature: DOC_TEMPLATE_MANAGE
+      parameters:
+        - $ref: '#/components/parameters/DocumentTemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentTemplateUpdate' }
+      responses:
+        '200':
+          description: Plantilla actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentTemplate' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteDocumentTemplate
+      tags: [templates]
+      summary: Desactiva una plantilla (soft delete vía is_active).
+      x-required-feature: DOC_TEMPLATE_MANAGE
+      parameters:
+        - $ref: '#/components/parameters/DocumentTemplateId'
+      responses:
+        '204':
+          description: Plantilla desactivada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  /document-templates/{id}/preview:
+    post:
+      operationId: previewDocumentTemplate
+      tags: [templates]
+      summary: Renderiza template_body con datos de muestra sin generar ni persistir un documento.
+      description: >-
+        Acción de sub-recurso (no CRUD) para validar una plantilla durante su
+        edición. Resuelve el Handlebars de `template_body` contra `sample_data`
+        y devuelve el HTML resultante. No crea filas en `document` ni
+        `document_version` (eso pertenece al dominio de document-api); la
+        conversión final a PDF/EXCEL/WORD la realiza el pdf-renderer-worker al
+        generar un documento real.
+      x-required-feature: DOC_TEMPLATE_MANAGE
+      parameters:
+        - $ref: '#/components/parameters/DocumentTemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentTemplatePreviewRequest' }
+      responses:
+        '200':
+          description: Resultado del renderizado de previsualización.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentTemplatePreviewResponse' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  # ---------------------------------------------------------------- reports (own domain)
+  /reports/template-usage:
+    get:
+      operationId: reportTemplateUsage
+      tags: [reports]
+      summary: Inventario de uso de plantillas (documentos generados por plantilla).
+      description: >-
+        Reporte propio del dominio de plantillas: agrega `document_template`
+        con `document` (mismo servicio document-service, mismo bounded
+        context; no cruza límites de servicio) agrupando por template_id.
+        Solo lectura. Inventario — Consumidores: coordinadores/admin (panel de
+        documentos), monitoring-service (si pública un KPI propio derivado);
+        Frecuencia: on-demand; Formato: JSON; Fuente: `document_template` +
+        `document` (agregación por template_id, filtrable por rango de
+        `document.created_at`).
+      x-required-feature: DOC_REPORT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - name: template_id
+          in: query
+          required: false
+          description: Limita el reporte a una única plantilla.
+          schema: { type: string, format: uuid }
+        - name: output_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PDF, EXCEL, WORD]
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango sobre document.created_at (inclusive).
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango sobre document.created_at (exclusive).
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Página de estadísticas de uso por plantilla.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TemplateUsageReportEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+components:
+  parameters:
+    DocumentTemplateIdOrCode:
+      name: id
+      in: path
+      required: true
+      description: >-
+        UUID de la plantilla o su code único (ej. SCHEDULE_CERTIFICATE).
+        Solo GET /document-templates/{id} acepta ambos formatos.
+      schema: { type: string, maxLength: 50 }
+    DocumentTemplateId:
+      name: id
+      in: path
+      required: true
+      description: >-
+        UUID de la plantilla. PUT, DELETE y preview operan solo por UUID
+        (no aceptan code).
+      schema: { type: string, format: uuid }
+
+  schemas:
+    DocumentTemplateListItem:
+      type: object
+      description: Representación de lista; excluye template_body (puede ser TEXT extenso).
+      required: [id, code, name, output_type, version, is_active]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, maxLength: 50, description: 'UNIQUE (ej: SCHEDULE_CERTIFICATE, ENROLLMENT_RECORD).' }
+        name: { type: string, maxLength: 200 }
+        output_type:
+          type: string
+          enum: [PDF, EXCEL, WORD]
+        version:
+          type: integer
+          description: Versión de la plantilla; se incrementa en cada PUT.
+        is_active: { type: boolean }
+
+    DocumentTemplate:
+      type: object
+      description: Representación de detalle; incluye template_body.
+      required: [id, code, name, template_body, output_type, version, is_active]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, maxLength: 50, description: 'UNIQUE (ej: SCHEDULE_CERTIFICATE, ENROLLMENT_RECORD).' }
+        name: { type: string, maxLength: 200 }
+        template_body:
+          type: string
+          description: Cuerpo de la plantilla en HTML/Handlebars.
+        output_type:
+          type: string
+          enum: [PDF, EXCEL, WORD]
+        version:
+          type: integer
+          description: Versión de la plantilla; se incrementa en cada PUT.
+        is_active: { type: boolean }
+
+    DocumentTemplateCreate:
+      type: object
+      required: [code, name, template_body, output_type]
+      properties:
+        code: { type: string, maxLength: 50 }
+        name: { type: string, maxLength: 200 }
+        template_body: { type: string }
+        output_type:
+          type: string
+          enum: [PDF, EXCEL, WORD]
+        is_active: { type: boolean, default: true }
+
+    DocumentTemplateUpdate:
+      type: object
+      description: >-
+        code es inmutable tras la creación (lo resuelven los workers vía
+        by-code); no se incluye en este payload.
+      properties:
+        name: { type: string, maxLength: 200 }
+        template_body: { type: string }
+        output_type:
+          type: string
+          enum: [PDF, EXCEL, WORD]
+        is_active: { type: boolean }
+
+    DocumentTemplatePreviewRequest:
+      type: object
+      required: [sample_data]
+      properties:
+        sample_data:
+          type: object
+          description: Datos de muestra para resolver los placeholders Handlebars de template_body.
+          additionalProperties: true
+
+    DocumentTemplatePreviewResponse:
+      type: object
+      required: [output_type, rendered_html]
+      properties:
+        output_type:
+          type: string
+          enum: [PDF, EXCEL, WORD]
+        rendered_html:
+          type: string
+          description: HTML resultante de resolver template_body contra sample_data.
+        missing_placeholders:
+          type: array
+          description: Placeholders referenciados en template_body sin valor en sample_data.
+          items: { type: string }
+
+    TemplateUsageReportEntry:
+      type: object
+      required: [template_id, template_code, template_name, output_type, total_documents]
+      properties:
+        template_id: { type: string, format: uuid }
+        template_code: { type: string, maxLength: 50 }
+        template_name: { type: string, maxLength: 200 }
+        output_type:
+          type: string
+          enum: [PDF, EXCEL, WORD]
+        total_documents:
+          type: integer
+          description: Conteo de filas en document con template_id = este template, dentro del rango filtrado.
+        last_generated_at:
+          type: [string, 'null']
+          format: date-time
+          description: MAX(document.created_at) para esta plantilla; null si nunca se ha generado.
+        status_breakdown:
+          type: array
+          description: Conteo de documentos por document.status.
+          items:
+            type: object
+            required: [status, count]
+            properties:
+              status:
+                type: string
+                enum: [GENERATING, AVAILABLE, ARCHIVED, EXPIRED, GENERATION_FAILED]
+              count: { type: integer }
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT RS256 emitido por iam-service; verificado localmente vía JWKS.
+
+

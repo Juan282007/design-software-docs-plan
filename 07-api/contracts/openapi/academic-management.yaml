@@ -1,0 +1,1378 @@
+openapi: 3.1.0
+info:
+  title: Academic Management Service API — Horarios SENA
+  version: 1.0.0
+  description: >-
+    Jerarquía curricular (líneas tecnológicas, redes tecnológicas, redes de conocimiento,
+    programas de formación), competencias, resultados de aprendizaje y fichas de matrícula
+    (oferta educativa). Fuente de verdad del contrato. Alineado con el modelo de datos de
+    academic-management-service y con 07-api/guidelines.md. La extensión `x-required-feature`
+    declara el feature RBAC que exige cada operación.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: curriculum
+    description: Jerarquía curricular — líneas tecnológicas, redes tecnológicas, redes de conocimiento y programas de formación.
+  - name: competencies
+    description: Competencias de un programa y sus resultados de aprendizaje.
+  - name: fichas
+    description: Fichas de matrícula (oferta educativa) y su ciclo de vida.
+  - name: reports
+    description: Reportes propios del dominio académico.
+
+paths:
+  # ---------------------------------------------------------------- tech-lines
+  /tech-lines:
+    get:
+      operationId: listTechLines
+      tags: [curriculum]
+      summary: Lista paginada de líneas tecnológicas.
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: is_active
+          in: query
+          required: false
+          description: Filtra por estado del registro.
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de líneas tecnológicas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TechLine' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createTechLine
+      tags: [curriculum]
+      summary: Crea una línea tecnológica.
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TechLineCreate' }
+      responses:
+        '201':
+          description: Línea tecnológica creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TechLine' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /tech-lines/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TechLineId'
+    get:
+      operationId: getTechLine
+      tags: [curriculum]
+      summary: Detalle de una línea tecnológica.
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      responses:
+        '200':
+          description: Línea tecnológica.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TechLine' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateTechLine
+      tags: [curriculum]
+      summary: Reemplaza los datos de una línea tecnológica.
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TechLineUpdate' }
+      responses:
+        '200':
+          description: Línea tecnológica actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TechLine' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteTechLine
+      tags: [curriculum]
+      summary: Baja lógica de una línea tecnológica (is_active = false).
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      responses:
+        '204':
+          description: Línea tecnológica desactivada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- tech-networks
+  /tech-networks:
+    get:
+      operationId: listTechNetworks
+      tags: [curriculum]
+      summary: Lista paginada de redes tecnológicas.
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: tech_line_id
+          in: query
+          required: false
+          description: Filtra por línea tecnológica.
+          schema: { type: string, format: uuid }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de redes tecnológicas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TechNetwork' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createTechNetwork
+      tags: [curriculum]
+      summary: Crea una red tecnológica dentro de una línea tecnológica.
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TechNetworkCreate' }
+      responses:
+        '201':
+          description: Red tecnológica creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TechNetwork' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /tech-networks/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TechNetworkId'
+    get:
+      operationId: getTechNetwork
+      tags: [curriculum]
+      summary: Detalle de una red tecnológica.
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      responses:
+        '200':
+          description: Red tecnológica.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TechNetwork' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateTechNetwork
+      tags: [curriculum]
+      summary: Reemplaza los datos de una red tecnológica.
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TechNetworkUpdate' }
+      responses:
+        '200':
+          description: Red tecnológica actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TechNetwork' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteTechNetwork
+      tags: [curriculum]
+      summary: Baja lógica de una red tecnológica (is_active = false).
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      responses:
+        '204':
+          description: Red tecnológica desactivada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- knowledge-networks
+  /knowledge-networks:
+    get:
+      operationId: listKnowledgeNetworks
+      tags: [curriculum]
+      summary: Lista paginada de redes de conocimiento.
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: tech_network_id
+          in: query
+          required: false
+          description: Filtra por red tecnológica.
+          schema: { type: string, format: uuid }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de redes de conocimiento.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/KnowledgeNetwork' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createKnowledgeNetwork
+      tags: [curriculum]
+      summary: Crea una red de conocimiento dentro de una red tecnológica.
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KnowledgeNetworkCreate' }
+      responses:
+        '201':
+          description: Red de conocimiento creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeNetwork' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /knowledge-networks/{id}:
+    parameters:
+      - $ref: '#/components/parameters/KnowledgeNetworkId'
+    get:
+      operationId: getKnowledgeNetwork
+      tags: [curriculum]
+      summary: Detalle de una red de conocimiento.
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      responses:
+        '200':
+          description: Red de conocimiento.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeNetwork' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateKnowledgeNetwork
+      tags: [curriculum]
+      summary: Reemplaza los datos de una red de conocimiento.
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KnowledgeNetworkUpdate' }
+      responses:
+        '200':
+          description: Red de conocimiento actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeNetwork' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteKnowledgeNetwork
+      tags: [curriculum]
+      summary: Baja lógica de una red de conocimiento (is_active = false).
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      responses:
+        '204':
+          description: Red de conocimiento desactivada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- training-programs
+  /training-programs:
+    get:
+      operationId: listTrainingPrograms
+      tags: [curriculum]
+      summary: Lista paginada de programas de formación.
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: knowledge_network_id
+          in: query
+          required: false
+          description: Filtra por red de conocimiento.
+          schema: { type: string, format: uuid }
+        - name: program_code
+          in: query
+          required: false
+          description: Filtra por código SENA del programa.
+          schema: { type: string }
+        - name: training_level
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [AUXILIARY, OPERATOR, TECHNICIAN, TECHNOLOGIST]
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de programas de formación.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TrainingProgram' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createTrainingProgram
+      tags: [curriculum]
+      summary: Crea un programa de formación (versión inicial = 1).
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrainingProgramCreate' }
+      responses:
+        '201':
+          description: Programa de formación creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrainingProgram' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /training-programs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TrainingProgramId'
+    get:
+      operationId: getTrainingProgram
+      tags: [curriculum]
+      summary: Detalle de un programa de formación (incluye versión vigente).
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      responses:
+        '200':
+          description: Programa de formación.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrainingProgram' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateTrainingProgram
+      tags: [curriculum]
+      summary: Reemplaza los datos de un programa de formación.
+      description: >-
+        Actualizar `version` representa una nueva definición curricular vigente. Las fichas
+        ya abiertas conservan su `program_version` congelada y no se ven afectadas.
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrainingProgramUpdate' }
+      responses:
+        '200':
+          description: Programa de formación actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrainingProgram' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteTrainingProgram
+      tags: [curriculum]
+      summary: Baja lógica de un programa de formación (is_active = false).
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      responses:
+        '204':
+          description: Programa de formación desactivado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- competencies (nested under program)
+  /training-programs/{program_id}/competencies:
+    parameters:
+      - name: program_id
+        in: path
+        required: true
+        description: UUID del programa de formación.
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listProgramCompetencies
+      tags: [competencies]
+      summary: Lista paginada de competencias de un programa.
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de competencias del programa.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Competency' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: createProgramCompetency
+      tags: [competencies]
+      summary: Crea una competencia dentro del programa.
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompetencyCreate' }
+      responses:
+        '201':
+          description: Competencia creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Competency' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /competencies/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CompetencyId'
+    get:
+      operationId: getCompetency
+      tags: [competencies]
+      summary: Detalle de una competencia.
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      responses:
+        '200':
+          description: Competencia.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Competency' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateCompetency
+      tags: [competencies]
+      summary: Reemplaza los datos de una competencia.
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompetencyUpdate' }
+      responses:
+        '200':
+          description: Competencia actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Competency' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteCompetency
+      tags: [competencies]
+      summary: Baja lógica de una competencia (is_active = false).
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      responses:
+        '204':
+          description: Competencia desactivada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- learning-outcomes (nested under competency)
+  /competencies/{id}/learning-outcomes:
+    parameters:
+      - $ref: '#/components/parameters/CompetencyId'
+    get:
+      operationId: listCompetencyLearningOutcomes
+      tags: [competencies]
+      summary: Lista paginada de resultados de aprendizaje de una competencia.
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de resultados de aprendizaje.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/LearningOutcome' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: createCompetencyLearningOutcome
+      tags: [competencies]
+      summary: Crea un resultado de aprendizaje dentro de la competencia.
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LearningOutcomeCreate' }
+      responses:
+        '201':
+          description: Resultado de aprendizaje creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LearningOutcome' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /learning-outcomes/{id}:
+    parameters:
+      - $ref: '#/components/parameters/LearningOutcomeId'
+    get:
+      operationId: getLearningOutcome
+      tags: [competencies]
+      summary: Detalle de un resultado de aprendizaje.
+      x-required-feature: ACADEMIC_PROGRAM_VIEW
+      responses:
+        '200':
+          description: Resultado de aprendizaje.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LearningOutcome' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateLearningOutcome
+      tags: [competencies]
+      summary: Reemplaza los datos de un resultado de aprendizaje.
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LearningOutcomeUpdate' }
+      responses:
+        '200':
+          description: Resultado de aprendizaje actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LearningOutcome' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteLearningOutcome
+      tags: [competencies]
+      summary: Baja lógica de un resultado de aprendizaje (is_active = false).
+      x-required-feature: ACADEMIC_PROGRAM_MANAGE
+      responses:
+        '204':
+          description: Resultado de aprendizaje desactivado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- fichas
+  /fichas:
+    get:
+      operationId: listFichas
+      tags: [fichas]
+      summary: Lista paginada de fichas de matrícula.
+      x-required-feature: ACADEMIC_FICHA_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: program_id
+          in: query
+          required: false
+          description: Filtra por UUID del programa de formación.
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [INDUCTION, EXECUTION, PRODUCTIVE_STAGE, COMPLETED, CANCELLED]
+        - name: ficha_number
+          in: query
+          required: false
+          description: Filtra por número de ficha SENA, coincidencia exacta.
+          schema: { type: string }
+        - name: training_center_id
+          in: query
+          required: false
+          description: Filtra por centro de formación (referencia a reference-data-service).
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de `start_date` (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de `start_date` (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Página de fichas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Ficha' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createFicha
+      tags: [fichas]
+      summary: Crea una ficha de matrícula en estado INDUCTION.
+      description: >-
+        `program_version` se calcula en el servidor como snapshot de `training_program.version`
+        vigente al momento de abrir la ficha; no se recibe en el request.
+      x-required-feature: ACADEMIC_FICHA_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FichaCreate' }
+      responses:
+        '201':
+          description: Ficha creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ficha' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /fichas/{id}:
+    parameters:
+      - $ref: '#/components/parameters/FichaId'
+    get:
+      operationId: getFicha
+      tags: [fichas]
+      summary: Detalle de una ficha de matrícula.
+      x-required-feature: ACADEMIC_FICHA_VIEW
+      responses:
+        '200':
+          description: Ficha.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ficha' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateFicha
+      tags: [fichas]
+      summary: Actualiza los datos operativos de la ficha (no el estado).
+      description: >-
+        No modifica `status`; los cambios de estado se realizan vía
+        `PATCH /fichas/{id}/status` respetando la máquina de estados. El
+        contrato de entrada es cerrado: no acepta propiedades adicionales y
+        requiere `row_version` para control de concurrencia. `expected_end_date`
+        puede enviarse como `null`; su semántica final queda abierta en las
+        decisiones del contrato. `max_capacity` solo puede reducirse si no queda
+        por debajo de aprendices activos; una validación fallida responde 422 y
+        no guarda cambios ni publica eventos. Un conflicto de `row_version` o un
+        estado terminal (`COMPLETED`/`CANCELLED`) responde 409 sin sobrescribir
+        la edición concurrente. Timeouts o no disponibilidad de dependencias
+        externas responden 503; el mapeo de un 404 recibido desde Actors queda
+        pendiente de decisión.
+      x-required-feature: ACADEMIC_FICHA_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FichaUpdate' }
+      responses:
+        '200':
+          description: Ficha actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ficha' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+        '503': { $ref: '_shared.yaml#/components/responses/ServiceUnavailable' }
+    delete:
+      operationId: deleteFicha
+      tags: [fichas]
+      summary: Baja lógica de la ficha (transición a CANCELLED).
+      description: >-
+        No elimina físicamente el registro. Equivale a cancelar la ficha:
+        aplica la transición de estado a `CANCELLED` y reutiliza las
+        validaciones de `PATCH /fichas/{id}/status` (guidelines ADR-004).
+        `COMPLETED` y `CANCELLED` son estados terminales; falla con 409 si la
+        ficha ya está en cualquiera de ellos. La cancelación publica el mismo
+        evento `academic.ficha.closed` que la transición a `CANCELLED`.
+      x-required-feature: ACADEMIC_FICHA_STATUS
+      responses:
+        '204':
+          description: Ficha dada de baja.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  /fichas/{id}/status:
+    parameters:
+      - $ref: '#/components/parameters/FichaId'
+    patch:
+      operationId: changeFichaStatus
+      tags: [fichas]
+      summary: Transiciona el estado de la ficha según su máquina de estados.
+      description: >-
+        Transiciones válidas: INDUCTION → EXECUTION|CANCELLED; EXECUTION → PRODUCTIVE_STAGE|CANCELLED;
+        PRODUCTIVE_STAGE → COMPLETED|CANCELLED. COMPLETED y CANCELLED son terminales.
+        Las transiciones inválidas o desde estados terminales responden 409.
+        La cancelación está reservada a CENTER_DIRECTOR según RN-ACAD-05, sin
+        retirar el feature compartido `ACADEMIC_FICHA_STATUS` de otras
+        transiciones. Las precondiciones externas para EXECUTION →
+        PRODUCTIVE_STAGE (Scheduling) y PRODUCTIVE_STAGE → COMPLETED (Actors)
+        quedan abiertas hasta definir las APIs/HUs correspondientes.
+      x-required-feature: ACADEMIC_FICHA_STATUS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FichaStatusChange' }
+      responses:
+        '200':
+          description: Ficha con el nuevo estado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ficha' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  # ---------------------------------------------------------------- reports (own domain)
+  /reports/enrollment-by-ficha:
+    get:
+      operationId: reportEnrollmentByFicha
+      tags: [reports]
+      summary: Capacidad y estado de oferta por ficha.
+      description: >-
+        Reporte propio del dominio académico sobre la tabla `enrollment_ficha` (con datos
+        derivados de `training_program`). Solo lectura. Inventario — Usuarios: coordinadores
+        académicos y dashboards de centro; Frecuencia: on-demand/diaria; Formato: JSON;
+        Fuente: `enrollment_ficha` + `training_program`. Conserva filtros,
+        paginación y alcance por rol de HU-ACAD-09: TRAINING_CENTER limita al
+        centro propio; otros scopes de ficha propia dependen de IAM/Actors y no
+        se inventan en este contrato. `from` es inclusivo y `to` exclusivo sobre
+        `start_date`.
+      x-required-feature: ACADEMIC_FICHA_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: training_center_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: program_id
+          in: query
+          required: false
+          description: Filtra por UUID del programa de formación.
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [INDUCTION, EXECUTION, PRODUCTIVE_STAGE, COMPLETED, CANCELLED]
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de `start_date` (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de `start_date` (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Página del reporte de capacidad/estado por ficha.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EnrollmentByFichaReportItem' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+  /reports/ficha-progress:
+    get:
+      operationId: reportFichaProgress
+      tags: [reports]
+      summary: Avance temporal de fichas (días transcurridos y atraso frente a la fecha esperada).
+      description: >-
+        Reporte propio del dominio académico sobre la tabla `enrollment_ficha`. Calcula el avance
+        temporal a partir de `start_date`, `expected_end_date` y `actual_end_date`. Solo lectura.
+        Inventario — Usuarios: coordinadores académicos y subdirectores de centro; Frecuencia:
+        on-demand/semanal; Formato: JSON; Fuente: `enrollment_ficha`. Conserva
+        filtros, paginación y alcance por rol de HU-ACAD-09: TRAINING_CENTER
+        limita al centro propio; otros scopes de ficha propia dependen de
+        IAM/Actors y no se inventan en este contrato. `from` es inclusivo y `to`
+        exclusivo sobre `start_date`. La semántica de `expected_end_date: null`
+        y los campos nullable finales del reporte quedan como decisiones
+        abiertas.
+      x-required-feature: ACADEMIC_FICHA_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: training_center_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: program_id
+          in: query
+          required: false
+          description: Filtra por UUID del programa de formación.
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [INDUCTION, EXECUTION, PRODUCTIVE_STAGE, COMPLETED, CANCELLED]
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de `start_date` (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de `start_date` (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Página del reporte de avance de fichas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/FichaProgressReportItem' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+components:
+  parameters:
+    TechLineId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la línea tecnológica.
+      schema: { type: string, format: uuid }
+    TechNetworkId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la red tecnológica.
+      schema: { type: string, format: uuid }
+    KnowledgeNetworkId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la red de conocimiento.
+      schema: { type: string, format: uuid }
+    TrainingProgramId:
+      name: id
+      in: path
+      required: true
+      description: UUID del programa de formación.
+      schema: { type: string, format: uuid }
+    CompetencyId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la competencia.
+      schema: { type: string, format: uuid }
+    LearningOutcomeId:
+      name: id
+      in: path
+      required: true
+      description: UUID del resultado de aprendizaje.
+      schema: { type: string, format: uuid }
+    FichaId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la ficha de matrícula.
+      schema: { type: string, format: uuid }
+
+  schemas:
+    TechLine:
+      type: object
+      required: [id, name, code, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 150 }
+        code: { type: string, maxLength: 20 }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    TechLineCreate:
+      type: object
+      required: [name, code]
+      properties:
+        name: { type: string, maxLength: 150 }
+        code: { type: string, maxLength: 20 }
+        is_active: { type: boolean, default: true }
+
+    TechLineUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 150 }
+        code: { type: string, maxLength: 20 }
+        is_active: { type: boolean }
+
+    TechNetwork:
+      type: object
+      required: [id, tech_line_id, name, code, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        tech_line_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 150 }
+        code: { type: string, maxLength: 20 }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    TechNetworkCreate:
+      type: object
+      required: [tech_line_id, name, code]
+      properties:
+        tech_line_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 150 }
+        code: { type: string, maxLength: 20 }
+        is_active: { type: boolean, default: true }
+
+    TechNetworkUpdate:
+      type: object
+      properties:
+        tech_line_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 150 }
+        code: { type: string, maxLength: 20 }
+        is_active: { type: boolean }
+
+    KnowledgeNetwork:
+      type: object
+      required: [id, tech_network_id, name, code, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        tech_network_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 150 }
+        code: { type: string, maxLength: 20 }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    KnowledgeNetworkCreate:
+      type: object
+      required: [tech_network_id, name, code]
+      properties:
+        tech_network_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 150 }
+        code: { type: string, maxLength: 20 }
+        is_active: { type: boolean, default: true }
+
+    KnowledgeNetworkUpdate:
+      type: object
+      properties:
+        tech_network_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 150 }
+        code: { type: string, maxLength: 20 }
+        is_active: { type: boolean }
+
+    TrainingProgram:
+      type: object
+      required: [id, knowledge_network_id, program_code, name, training_level, total_hours, version, is_active, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        knowledge_network_id: { type: string, format: uuid }
+        program_code: { type: string, maxLength: 20, description: Código SENA del programa. }
+        name: { type: string, maxLength: 200 }
+        training_level:
+          type: string
+          enum: [AUXILIARY, OPERATOR, TECHNICIAN, TECHNOLOGIST]
+        total_hours: { type: integer, minimum: 0, description: Duración total en horas. }
+        version: { type: integer, description: Versión vigente de la definición curricular. }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    TrainingProgramCreate:
+      type: object
+      required: [knowledge_network_id, program_code, name, training_level, total_hours]
+      properties:
+        knowledge_network_id: { type: string, format: uuid }
+        program_code: { type: string, maxLength: 20 }
+        name: { type: string, maxLength: 200 }
+        training_level:
+          type: string
+          enum: [AUXILIARY, OPERATOR, TECHNICIAN, TECHNOLOGIST]
+        total_hours: { type: integer, minimum: 0 }
+        is_active: { type: boolean, default: true }
+
+    TrainingProgramUpdate:
+      type: object
+      properties:
+        knowledge_network_id: { type: string, format: uuid }
+        program_code: { type: string, maxLength: 20 }
+        name: { type: string, maxLength: 200 }
+        training_level:
+          type: string
+          enum: [AUXILIARY, OPERATOR, TECHNICIAN, TECHNOLOGIST]
+        total_hours: { type: integer, minimum: 0 }
+        version:
+          type: integer
+          description: Incrementar representa una nueva definición curricular vigente.
+        is_active: { type: boolean }
+
+    Competency:
+      type: object
+      required: [id, program_id, name, sena_code, hours, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        program_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 200 }
+        sena_code: { type: string, maxLength: 20 }
+        hours: { type: integer, minimum: 0 }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    CompetencyCreate:
+      type: object
+      required: [name, sena_code, hours]
+      properties:
+        name: { type: string, maxLength: 200 }
+        sena_code: { type: string, maxLength: 20 }
+        hours: { type: integer, minimum: 0 }
+        is_active: { type: boolean, default: true }
+
+    CompetencyUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 200 }
+        sena_code: { type: string, maxLength: 20 }
+        hours: { type: integer, minimum: 0 }
+        is_active: { type: boolean }
+
+    LearningOutcome:
+      type: object
+      required: [id, competency_id, code, description, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        competency_id: { type: string, format: uuid }
+        code: { type: string, maxLength: 20 }
+        description: { type: string }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    LearningOutcomeCreate:
+      type: object
+      required: [code, description]
+      properties:
+        code: { type: string, maxLength: 20 }
+        description: { type: string }
+        is_active: { type: boolean, default: true }
+
+    LearningOutcomeUpdate:
+      type: object
+      properties:
+        code: { type: string, maxLength: 20 }
+        description: { type: string }
+        is_active: { type: boolean }
+
+    Ficha:
+      type: object
+      required: [id, ficha_number, program_id, program_version, training_center_id, status, start_date, training_shift, training_modality, max_capacity, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        ficha_number: { type: string, maxLength: 20, description: Número de ficha SENA; único. }
+        program_id: { type: string, format: uuid }
+        program_version:
+          type: integer
+          readOnly: true
+          description: Snapshot de `training_program.version` al abrir la ficha; congelado (no cambia con el programa).
+        training_center_id:
+          type: string
+          format: uuid
+          description: Referencia lógica a `training_center.id` en reference-data-service (sin FK física, sin endpoint de join).
+        status:
+          type: string
+          enum: [INDUCTION, EXECUTION, PRODUCTIVE_STAGE, COMPLETED, CANCELLED]
+        start_date: { type: string, format: date }
+        expected_end_date:
+          type: [string, 'null']
+          format: date
+        actual_end_date:
+          type: [string, 'null']
+          format: date
+          description: Fecha real de cierre de la ficha.
+        training_shift:
+          type: string
+          enum: [DAY, NIGHT, MIXED]
+        training_modality:
+          type: string
+          enum: [IN_PERSON, VIRTUAL, HYBRID]
+        max_capacity: { type: integer, minimum: 1, description: Número máximo de aprendices. }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    FichaCreate:
+      type: object
+      required: [ficha_number, program_id, training_center_id, start_date, training_shift, training_modality, max_capacity]
+      properties:
+        ficha_number: { type: string, maxLength: 20 }
+        program_id: { type: string, format: uuid }
+        training_center_id: { type: string, format: uuid }
+        start_date: { type: string, format: date }
+        expected_end_date:
+          type: [string, 'null']
+          format: date
+        training_shift:
+          type: string
+          enum: [DAY, NIGHT, MIXED]
+        training_modality:
+          type: string
+          enum: [IN_PERSON, VIRTUAL, HYBRID]
+        max_capacity: { type: integer, minimum: 1 }
+
+    FichaUpdate:
+      type: object
+      additionalProperties: false
+      required: [row_version]
+      properties:
+        row_version:
+          type: integer
+          minimum: 0
+        expected_end_date:
+          type: [string, 'null']
+          format: date
+        training_shift:
+          type: string
+          enum: [DAY, NIGHT, MIXED]
+        training_modality:
+          type: string
+          enum: [IN_PERSON, VIRTUAL, HYBRID]
+        max_capacity: { type: integer, minimum: 1 }
+
+    FichaStatusChange:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [INDUCTION, EXECUTION, PRODUCTIVE_STAGE, COMPLETED, CANCELLED]
+          description: Estado destino; debe ser una transición válida desde el estado actual.
+        actual_end_date:
+          type: [string, 'null']
+          format: date
+          description: Fecha real de cierre; aplica al transicionar a COMPLETED o CANCELLED.
+
+    EnrollmentByFichaReportItem:
+      type: object
+      required: [ficha_id, ficha_number, program_id, program_code, program_name, training_center_id, status, max_capacity, start_date]
+      properties:
+        ficha_id: { type: string, format: uuid }
+        ficha_number: { type: string }
+        program_id: { type: string, format: uuid }
+        program_code: { type: string }
+        program_name: { type: string }
+        training_center_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [INDUCTION, EXECUTION, PRODUCTIVE_STAGE, COMPLETED, CANCELLED]
+        max_capacity: { type: integer }
+        training_shift:
+          type: string
+          enum: [DAY, NIGHT, MIXED]
+        training_modality:
+          type: string
+          enum: [IN_PERSON, VIRTUAL, HYBRID]
+        start_date: { type: string, format: date }
+
+    FichaProgressReportItem:
+      type: object
+      required: [ficha_id, ficha_number, status, start_date, days_elapsed, is_delayed]
+      properties:
+        ficha_id: { type: string, format: uuid }
+        ficha_number: { type: string }
+        status:
+          type: string
+          enum: [INDUCTION, EXECUTION, PRODUCTIVE_STAGE, COMPLETED, CANCELLED]
+        start_date: { type: string, format: date }
+        expected_end_date:
+          type: [string, 'null']
+          format: date
+        actual_end_date:
+          type: [string, 'null']
+          format: date
+        days_elapsed:
+          type: integer
+          description: Días transcurridos desde `start_date`.
+        days_remaining:
+          type: [integer, 'null']
+          description: Días restantes hasta `expected_end_date`; null si no tiene fecha esperada o ya cerró.
+        is_delayed:
+          type: boolean
+          description: true si superó `expected_end_date` sin llegar a estado terminal.
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT RS256 emitido por iam-service; verificado localmente vía JWKS.
+
+

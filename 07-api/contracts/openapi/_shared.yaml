@@ -1,0 +1,190 @@
+openapi: 3.1.0
+info:
+  title: Shared API Components — Horarios SENA
+  version: 1.0.0
+  description: >-
+    Componentes OpenAPI reutilizables ($ref) por todos los microservicios.
+    Alineados con 07-api/guidelines.md (paginación §6, errores §7, auth §8).
+servers:
+  - url: /api/v1
+paths: {}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT RS256 emitido por iam-service; verificado localmente vía JWKS (ver authentication.md).
+
+  parameters:
+    page:
+      name: page
+      in: query
+      required: false
+      description: Número de página (1-based). Paginación por offset.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    page_size:
+      name: page_size
+      in: query
+      required: false
+      description: Tamaño de página (máx 100). Paginación por offset.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    sort:
+      name: sort
+      in: query
+      required: false
+      description: 'Orden como "<campo>:<asc|desc>" (p. ej. created_at:desc). El campo debe estar permitido por el endpoint.'
+      schema:
+        type: string
+        example: created_at:desc
+    cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Cursor opaco para paginación por cursor (colecciones grandes/continuas como auditoría y sesiones).
+      schema:
+        type: string
+    limit:
+      name: limit
+      in: query
+      required: false
+      description: Tamaño de página para paginación por cursor (máx 100).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+
+  schemas:
+    Pagination:
+      type: object
+      description: Metadatos de paginación por offset.
+      required: [page, page_size, total_items, total_pages]
+      properties:
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 20
+        total_items:
+          type: integer
+          example: 137
+        total_pages:
+          type: integer
+          example: 7
+    CursorPagination:
+      type: object
+      description: Metadatos de paginación por cursor.
+      required: [limit, has_more]
+      properties:
+        next_cursor:
+          type: [string, 'null']
+          description: Cursor para la siguiente página; null si no hay más.
+          example: eyJpZCI6IjhmMGMifQ==
+        limit:
+          type: integer
+          example: 50
+        has_more:
+          type: boolean
+          example: true
+    ErrorDetail:
+      type: object
+      required: [field, issue]
+      properties:
+        field:
+          type: string
+          example: start_time
+        issue:
+          type: string
+          description: Código estable del problema del campo (independiente de idioma).
+          example: OVERLAPS_EXISTING_SESSION
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Identificador estable en SCREAMING_SNAKE_CASE, independiente del idioma.
+              example: SCHEDULE_CONFLICT
+            message:
+              type: string
+              description: Mensaje legible en español; no expone internals.
+              example: El instructor ya tiene una sesión en ese bloque horario.
+            details:
+              type: array
+              items:
+                $ref: '#/components/schemas/ErrorDetail'
+            trace_id:
+              type: string
+              description: Correlación con logs y audit-service.
+              example: b3f1c2a4-9e21-4d3a-8f0c-1a2b3c4d5e6f
+
+  responses:
+    BadRequest:
+      description: Payload malformado o validación de dominio fallida.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Token ausente, inválido o expirado.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Feature o scope insuficiente (RBAC).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Recurso inexistente o fuera del scope del usuario.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Unexpected server or persistence failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Conflicto de estado (p. ej. choque de horario, versión concurrente).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnprocessableEntity:
+      description: Reglas de negocio no satisfechas con payload sintácticamente válido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServiceUnavailable:
+      description: Una dependencia necesaria no está disponible o agotó el tiempo de respuesta.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TooManyRequests:
+      description: Límite de tasa superado.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+

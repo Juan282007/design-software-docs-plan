@@ -1,0 +1,19 @@
+# CODEOWNERS — design-software-docs
+#
+# Define los revisores OBLIGATORIOS por ruta. Un PR solo puede mergear cuando un
+# code owner de la(s) ruta(s) afectada(s) aprueba (si el ruleset exige review de
+# code owners). Complementa la protección de ramas y la política en
+# 00-governance/security-policy.md.
+#
+# NOTA: se usan OWNERS reales existentes (team @code-sena/design-software y los
+# admins). La granularidad por rol (backend/frontend/datos/etc.) se agregará cuando
+# esos teams de rol existan y sus integrantes estén en la org (hoy solo hay 6
+# miembros). Sintaxis: <patrón> @owner
+
+# Catch-all — el equipo del proyecto revisa cualquier cambio sin owner específico
+*                       @code-sena/design-software
+
+# Gobernanza y configuración sensible — PO + Coordinadores (Admin)
+/00-governance/         @ariel5253 @Andrey31072 @Juan282007
+/.github/               @ariel5253 @Andrey31072 @Juan282007
+/CONTRIBUTING.md        @ariel5253 @Andrey31072 @Juan282007

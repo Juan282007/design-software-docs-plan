@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.design-software.local/events/iam.user.deactivated.schema.json",
+  "title": "iam.user.deactivated",
+  "type": "object",
+  "required": ["event_id", "event_type", "version", "timestamp", "source_service", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "event_type": { "const": "iam.user.deactivated" },
+    "version": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "source_service": { "const": "iam-service" },
+    "correlation_id": { "type": "string", "format": "uuid" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id", "email", "deactivated_at"],
+      "additionalProperties": true,
+      "properties": {
+        "user_id": { "type": "string", "format": "uuid" },
+        "email": { "type": "string", "format": "email" },
+        "deactivated_by": { "type": ["string", "null"], "format": "uuid" },
+        "deactivated_at": { "type": "string", "format": "date-time" },
+        "reason": { "type": ["string", "null"], "maxLength": 120 }
+      }
+    }
+  }
+}

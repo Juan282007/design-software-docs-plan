@@ -1,0 +1,382 @@
+<!-- RESUMEN-EJECUTIVO
+agente: Jesús Ariel González Bonilla (PM + Arquitecto)
+capacidad: contrato de API (OpenAPI 3.1)
+fase: diseño (api-first)
+estado: accepted
+dependencias_entrada: 09-microservices/services/01-iam-service/data-model.md, 07-api/guidelines.md, 07-api/contracts/openapi/_shared.yaml
+consumidores_siguientes: backend iam-service, frontend, pruebas de contrato
+tldr: Autenticación JWT + RBAC (users/roles/features/scope-overrides/sessions) con paginación y reporte login-audit por cursor. La fuente de verdad es openapi.yaml.
+
+## Claim `ficha_id` para aprendices
+
+Cuando IAM emite un JWT para un usuario cuyo perfil es exclusivamente `LEARNER`,
+consulta a Actors mediante el endpoint interno protegido por mTLS
+`GET /internal/learners/by-user/{user_id}/active-ficha`. Si existe una ficha
+activa válida, IAM incluye `ficha_id` como un UUID en el JWT. El claim representa
+la ficha activa actual del aprendiz y no debe conservarse de un token anterior.
+
+Para perfiles distintos de `LEARNER`, IAM no consulta Actors y no emite
+`ficha_id`. Si Actors responde sin ficha, con un perfil inexistente o con un
+error controlado, el login puede continuar sin ese claim. Scheduling consume el
+JWT de IAM y aplica `ficha_id` para el alcance propio del aprendiz; no consulta
+directamente el endpoint interno de Actors.
+decisiones_clave: OpenAPI publicable en 07-api/contracts/openapi/iam.yaml; envelope de error estándar (guidelines §7); reportes por servicio
+halts_registrados: ninguno
+-->
+
+# Contrato — iam-api
+
+> Estado: 🟢 Aceptado | Última actualización: 2026-08-27
+
+> **Fuente de verdad (normativa):** el spec OpenAPI 3.1 en
+> [`07-api/contracts/openapi/iam.yaml`](../../../../../07-api/contracts/openapi/iam.yaml).
+> Este documento es la **narrativa** que lo explica; ante cualquier diferencia, **manda el
+> `openapi.yaml`**. Convenciones transversales en [07-api/guidelines.md](../../../../../07-api/guidelines.md).
+
+## Base URL
+
+`/api/v1`
+
+---
+
+## Endpoints operacionales (fuera de `/api/v1`, HU-IAM-011)
+
+No forman parte del contrato de negocio (no están en `iam.yaml`) — son un `@RestController` propio, expuesto en la raíz del servidor de la app (no bajo `/actuator`). Detalle operativo (SLO, semántica de cada chequeo) en [runbook.md](../../runbook.md#healthcheck).
+
+| Endpoint | Uso | `200` cuando | `503` cuando |
+|----------|-----|--------------|--------------|
+| `GET /health` | Liveness probe | El proceso vive | (nunca por dependencias externas; solo si el proceso no responde) |
+| `GET /ready` | Readiness probe | BD conecta, y broker AMQP conecta *si `spring.rabbitmq.host` está configurado* | BD no conecta, o el broker configurado no conecta |
+
+Respaldan la propagación de trazas de [ADR-008](../../../../../05-architecture/decisions/records/ADR-008-observability-opentelemetry.md); no requieren `Authorization`.
+
+---
+
+## Autenticación
+
+### `POST /auth/login`
+
+Login con email y contraseña. No requiere token.
+
+**Request:**
+```json
+{ "email": "coordinador@sena.edu.co", "password": "plain-text-password" }
+```
+
+**Response 200:**
+```json
+{
+  "access_token": "eyJhbGci...",
+  "refresh_token": "eyJhbGci...",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "user": {
+    "id": "uuid",
+    "email": "coordinador@sena.edu.co",
+    "full_name": "María García",
+    "roles": ["COORDINATOR"],
+    "training_center_id": "uuid-del-centro",
+    "features": ["SCH_CREATE:TRAINING_CENTER", "SCH_PUBLISH:TRAINING_CENTER", "..."]
+  }
+}
+```
+
+El `access_token` lleva pre-calculados los features del usuario. TTL: 15 min.
+El `refresh_token` tiene TTL: 7 días.
+
+### `POST /auth/refresh`
+
+Renueva el access_token usando el refresh_token. No requiere Authorization header.
+
+**Request:**
+```json
+{ "refresh_token": "eyJhbGci..." }
+```
+
+**Response 200:** igual a `/auth/login` pero sin cambiar el `refresh_token`.
+
+### `POST /auth/logout`
+
+Revoca el refresh_token activo.
+
+**Headers:** `Authorization: Bearer <access_token>`
+
+**Response 204:** sin body.
+
+### `GET /auth/me`
+
+Información del usuario autenticado con todos sus features calculados.
+
+**Headers:** `Authorization: Bearer <access_token>`
+
+**Response 200:**
+```json
+{
+  "id": "uuid",
+  "email": "...",
+  "full_name": "...",
+  "actor_type": "INSTRUCTOR",
+  "actor_id": "uuid-del-instructor",
+  "roles": [{ "name": "INSTRUCTOR", "training_center_id": "uuid" }],
+  "features": ["SCH_VIEW_OWN:OWN_SCHEDULE", "ACT_INSTRUCTOR_VIEW:OWN_PROFILE", "..."],
+  "modules": ["MOD_SCHEDULING", "MOD_ACTORS", "MOD_MONITORING", "MOD_NOTIFICATIONS"]
+}
+```
+
+`modules` lista los módulos donde el usuario tiene al menos un feature activo (para construir el menú de la UI).
+
+### `POST /auth/password-reset/request`
+
+Solicita un token de reset de contraseña enviado al email.
+
+**Request:**
+```json
+{ "email": "usuario@sena.edu.co" }
+```
+
+**Response 202:** Siempre 202 (no revela si el email existe o no).
+
+### `POST /auth/password-reset/confirm`
+
+Confirma el reset de contraseña con el token recibido por email.
+
+**Request:**
+```json
+{ "token": "...", "new_password": "nueva-contraseña" }
+```
+
+**Response 204.**
+
+### `GET /auth/.well-known/jwks.json`
+
+HU-IAM-010 E2/E3 — clave(s) pública(s) RSA para verificación local del `access_token` (RS256),
+formato JWKS estándar (RFC 7517). No requiere `Authorization`. Durante una rotación de clave
+responde con dos entradas (actual + saliente, cada una con su `kid`). Detalle completo —
+estructura del JWT, algoritmo de verificación por servicio, rotación — en
+[`authentication.md`](../../../../../07-api/authentication.md).
+
+> Este endpoint es intencionalmente **externo al OpenAPI de dominio** (`iam.yaml`): es un
+> endpoint de infraestructura de seguridad estándar (como `/actuator/health`), no un recurso
+> de negocio versionado por el contrato de `iam-api`.
+
+**Response 200:**
+```json
+{
+  "keys": [
+    { "kty": "RSA", "use": "sig", "alg": "RS256", "kid": "iam-rsa-1", "n": "...", "e": "AQAB" }
+  ]
+}
+```
+
+---
+
+## Gestión de usuarios
+
+### `GET /users`
+
+Lista usuarios. Paginado.
+
+| Parámetro | Tipo | Descripción |
+|-----------|------|-------------|
+| `training_center_id` | UUID (query) | Filtrar por centro |
+| `role` | STRING (query) | Filtrar por nombre de rol |
+| `is_active` | BOOLEAN (query) | Filtrar por estado |
+| `page` | INT | Default 1 |
+| `page_size` | INT | Default 20, max 100 |
+
+**Feature requerido:** `IDENTITY_USER_VIEW`
+
+### `POST /users`
+
+Crea un usuario nuevo.
+
+**Feature requerido:** `IDENTITY_USER_MANAGE`
+
+**Request:**
+```json
+{
+  "email": "nuevo@sena.edu.co",
+  "full_name": "Nombre Completo",
+  "actor_type": "INSTRUCTOR",
+  "actor_id": "uuid-del-instructor",
+  "initial_role": "INSTRUCTOR",
+  "training_center_id": "uuid-del-centro"
+}
+```
+
+**Response 201:**
+```json
+{ "id": "uuid", "email": "...", "temporary_password": "..." }
+```
+
+La contraseña temporal se envía también al email del usuario.
+
+### `GET /users/{id}`
+
+**Feature requerido:** `IDENTITY_USER_VIEW`
+
+### `PUT /users/{id}`
+
+Actualizar datos del usuario (no contraseña).
+
+**Feature requerido:** `IDENTITY_USER_MANAGE`
+
+### `POST /users/{id}/deactivate`
+
+Desactiva la cuenta (soft delete). Revoca todos los refresh tokens activos.
+
+**Feature requerido:** `IDENTITY_USER_MANAGE`
+
+### `GET /users/{id}/sessions`
+
+Lista sesiones activas (refresh tokens válidos) del usuario.
+
+**Feature requerido:** `IDENTITY_USER_VIEW`
+
+### `DELETE /users/{id}/sessions/{session_id}`
+
+Revoca una sesión específica (permite al usuario cerrar una sesión remota).
+
+**Feature requerido:** `IDENTITY_USER_VIEW` (propietario) o `IDENTITY_USER_MANAGE` (admin)
+
+---
+
+## Gestión de roles y features
+
+### `GET /roles`
+
+Lista todos los roles con sus features y scopes.
+
+**Feature requerido:** `IDENTITY_ROLE_VIEW`
+
+### `GET /roles/{id}/features`
+
+Lista los features asignados a un rol, con su scope_type.
+
+**Feature requerido:** `IDENTITY_ROLE_VIEW`
+
+### `POST /users/{id}/roles`
+
+Asigna un rol a un usuario.
+
+**Feature requerido:** `IDENTITY_ROLE_ASSIGN`
+
+**Request:**
+```json
+{
+  "role_name": "COORDINATOR",
+  "training_center_id": "uuid-del-centro",
+  "expires_at": null
+}
+```
+
+### `DELETE /users/{id}/roles/{role_name}`
+
+Revoca un rol de un usuario.
+
+**Feature requerido:** `IDENTITY_ROLE_ASSIGN`
+
+---
+
+## Gestión de módulos y features (solo lectura)
+
+### `GET /modules`
+
+Lista todos los módulos del sistema con sus features.
+
+**Feature requerido:** `IDENTITY_ROLE_VIEW`
+
+**Response:**
+```json
+[
+  {
+    "code": "MOD_SCHEDULING",
+    "name": "Horarios",
+    "features": [
+      { "code": "SCH_CREATE", "name": "Crear horario", "action_level": "WRITE" },
+      ...
+    ]
+  }
+]
+```
+
+---
+
+## Overrides de scope
+
+### `GET /users/{id}/scope-overrides`
+
+Lista los overrides activos de un usuario.
+
+**Feature requerido:** `IDENTITY_SCOPE_MANAGE`
+
+### `POST /users/{id}/scope-overrides`
+
+Crea un override de acceso para un usuario.
+
+**Feature requerido:** `IDENTITY_SCOPE_MANAGE`
+
+**Request:**
+```json
+{
+  "feature_code": "SCH_VIEW_ALL",
+  "scope_type": "TRAINING_CENTER",
+  "is_allowed": true,
+  "reason": "Cubriendo al coordinador durante licencia",
+  "expires_at": "2026-07-15T23:59:59Z"
+}
+```
+
+### `DELETE /users/{id}/scope-overrides/{override_id}`
+
+Revoca un override.
+
+---
+
+## Reportes (dominio propio)
+
+### `GET /reports/login-audit`
+
+Auditoría de intentos de login sobre la tabla `audit_login`. **Solo lectura**, paginación por
+**cursor** (colección grande/continua, guidelines §6).
+
+- **Feature requerido:** `AUDIT_LOG_VIEW`.
+- **Filtros:** `user_id`, `email`, `outcome`, `from`, `to`.
+- **Inventario:** Usuarios: seguridad/administración · Frecuencia: on-demand · Formato: JSON · Fuente: `identity_audit.audit_login`.
+
+---
+
+## Formato de error estándar
+
+Aplica el **envelope estándar de la plataforma** ([guidelines §7](../../../../../07-api/guidelines.md) /
+`_shared.yaml#/components/schemas/Error`):
+
+```json
+{
+  "error": {
+    "code": "INSUFFICIENT_PERMISSIONS",
+    "message": "No tiene acceso a este recurso",
+    "details": [ { "field": "required_feature", "issue": "SCH_PUBLISH" } ],
+    "trace_id": "uuid-v4"
+  }
+}
+```
+
+> El campo `required_feature` del borrador anterior se transporta ahora dentro de `details`
+> para no romper el envelope común. Los **códigos** de dominio siguen vigentes:
+
+## Códigos de error propios
+
+| Código | HTTP | Descripción |
+|--------|------|-------------|
+| `INVALID_CREDENTIALS` | 401 | Email o contraseña incorrectos |
+| `ACCOUNT_LOCKED` | 401 | Cuenta bloqueada temporalmente |
+| `ACCOUNT_INACTIVE` | 401 | Cuenta desactivada |
+| `TOKEN_EXPIRED` | 401 | Access token expirado |
+| `TOKEN_REVOKED` | 401 | Refresh token revocado |
+| `TOKEN_INVALID` | 401 | Token malformado o firma inválida |
+| `INSUFFICIENT_PERMISSIONS` | 403 | No tiene el feature requerido |
+| `SCOPE_VIOLATION` | 403 | Tiene el feature pero no el scope (intenta acceder a datos de otro centro) |
+| `USER_NOT_FOUND` | 404 | Usuario no encontrado |
+| `RESET_TOKEN_EXPIRED` | 400 | Token de reset expirado o ya usado |
+| `RATE_LIMIT_EXCEEDED` | 429 | Demasiados intentos de login o reset |

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.design-software.local/events/iam.user.created.schema.json",
+  "title": "iam.user.created",
+  "type": "object",
+  "required": ["event_id", "event_type", "version", "timestamp", "source_service", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "event_type": { "const": "iam.user.created" },
+    "version": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "source_service": { "const": "iam-service" },
+    "correlation_id": { "type": "string", "format": "uuid" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id", "email", "first_name", "last_name", "actor_type", "roles"],
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "actor_type": { "const": "INSTRUCTOR" } },
+            "required": ["actor_type"]
+          },
+          "then": {
+            "required": ["document_type", "document_number", "default_max_hours_per_week"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "actor_type": { "const": "LEARNER" } },
+            "required": ["actor_type"]
+          },
+          "then": {
+            "required": ["document_type", "document_number"]
+          }
+        }
+      ],
+      "properties": {
+        "user_id": { "type": "string", "format": "uuid" },
+        "email": { "type": "string", "format": "email" },
+        "first_name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "last_name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "document_type": { "type": ["string", "null"], "enum": ["CC", "CE", "PA", "PE", null] },
+        "document_number": { "type": ["string", "null"], "maxLength": 20 },
+        "default_max_hours_per_week": { "type": ["number", "null"], "minimum": 0 },
+        "actor_type": { "type": "string", "enum": ["INSTRUCTOR", "LEARNER", "USER"] },
+        "actor_id": { "type": ["string", "null"], "format": "uuid" },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["role_name"],
+            "additionalProperties": false,
+            "properties": {
+              "role_name": { "type": "string", "minLength": 1, "maxLength": 80 },
+              "training_center_id": { "type": ["string", "null"], "format": "uuid" }
+            }
+          }
+        },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

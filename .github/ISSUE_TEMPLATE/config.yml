@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "Refinamiento desde el mockup (antes de crear HU)"
+    url: "https://github.com/code-sena/design-software-docs/tree/main/12-ux-ui/mockup-ddd/refinamiento"
+    about: "Proceso para aceptar/rechazar propuestas (requerimientos → BD → mockup) antes de convertirlas en HU."
+  - name: "Mockup navegable"
+    url: "https://code-sena.github.io/design-software-mockup/"
+    about: "Ver el prototipo de referencia para redactar la HU."
