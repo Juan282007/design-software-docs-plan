@@ -1,0 +1,894 @@
+openapi: 3.1.0
+info:
+  title: Training Environment Service API — Horarios SENA
+  version: 1.0.0
+  description: >-
+    Gestión de ambientes físicos de formación (aulas, laboratorios, talleres),
+    su catálogo de tipos, reglas recurrentes de disponibilidad, períodos de
+    mantenimiento, reservas puntuales (con anti-solapamiento) y reporte de
+    utilización de ambientes. Fuente de verdad del contrato. Alineado con el
+    modelo de datos de training-environment-service y con 07-api/guidelines.md.
+    La extensión `x-required-feature` declara el feature RBAC que exige cada
+    operación.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: training-environments
+    description: Ambientes físicos de formación (aulas, laboratorios, talleres).
+  - name: environment-types
+    description: Catálogo de tipos de ambiente (solo lectura + alta administrativa).
+  - name: availability-rules
+    description: Reglas recurrentes de disponibilidad de un ambiente.
+  - name: maintenance
+    description: Períodos de mantenimiento que bloquean un ambiente.
+  - name: reservations
+    description: Reservas puntuales de un ambiente fuera del horario de clase asignado.
+  - name: reports
+    description: Reportes propios del dominio training-environment.
+
+paths:
+  # ---------------------------------------------------------- environment-types
+  /environment-types:
+    get:
+      operationId: listEnvironmentTypes
+      tags: [environment-types]
+      summary: Lista el catálogo de tipos de ambiente.
+      x-required-feature: ENV_VIEW
+      responses:
+        '200':
+          description: Catálogo de tipos de ambiente.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/EnvironmentType' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createEnvironmentType
+      tags: [environment-types]
+      summary: Crea un tipo de ambiente (catálogo administrativo).
+      x-required-feature: ENV_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnvironmentTypeCreate' }
+      responses:
+        '201':
+          description: Tipo de ambiente creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnvironmentType' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /environment-types/{id}:
+    parameters:
+      - $ref: '#/components/parameters/EnvironmentTypeId'
+    get:
+      operationId: getEnvironmentType
+      tags: [environment-types]
+      summary: Detalle de un tipo de ambiente.
+      x-required-feature: ENV_VIEW
+      responses:
+        '200':
+          description: Tipo de ambiente.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnvironmentType' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------- training-environments
+  /training-environments:
+    get:
+      operationId: listTrainingEnvironments
+      tags: [training-environments]
+      summary: Lista paginada de ambientes de formación.
+      x-required-feature: ENV_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: environment_type_id
+          in: query
+          required: false
+          description: Filtra por tipo de ambiente.
+          schema: { type: string, format: uuid }
+        - name: training_center_id
+          in: query
+          required: false
+          description: Filtra por centro de formación (referencia externa a reference-data-service).
+          schema: { type: string, format: uuid }
+        - name: is_active
+          in: query
+          required: false
+          description: Filtra por estado operativo del ambiente.
+          schema: { type: boolean }
+        - name: available_date
+          in: query
+          required: false
+          description: >-
+            Junto con available_start_time/available_end_time, filtra ambientes sin
+            solapamiento con mantenimiento o reservas confirmadas/pendientes y con una
+            regla de disponibilidad vigente que cubra la franja solicitada.
+          schema: { type: string, format: date }
+        - name: available_start_time
+          in: query
+          required: false
+          schema: { type: string, format: time }
+        - name: available_end_time
+          in: query
+          required: false
+          schema: { type: string, format: time }
+      responses:
+        '200':
+          description: Página de ambientes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Environment' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createTrainingEnvironment
+      tags: [training-environments]
+      summary: Registra un nuevo ambiente de formación.
+      x-required-feature: ENV_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnvironmentCreate' }
+      responses:
+        '201':
+          description: Ambiente creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Environment' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /training-environments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/EnvironmentId'
+    get:
+      operationId: getTrainingEnvironment
+      tags: [training-environments]
+      summary: Detalle de un ambiente de formación.
+      x-required-feature: ENV_VIEW
+      responses:
+        '200':
+          description: Ambiente.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Environment' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateTrainingEnvironment
+      tags: [training-environments]
+      summary: Reemplaza los datos editables del ambiente.
+      x-required-feature: ENV_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnvironmentUpdate' }
+      responses:
+        '200':
+          description: Ambiente actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Environment' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    patch:
+      operationId: patchTrainingEnvironment
+      tags: [training-environments]
+      summary: Actualiza parcialmente el ambiente.
+      x-required-feature: ENV_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnvironmentUpdate' }
+      responses:
+        '200':
+          description: Ambiente actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Environment' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deactivateTrainingEnvironment
+      tags: [training-environments]
+      summary: Da de baja lógica al ambiente (is_active = false).
+      x-required-feature: ENV_MANAGE
+      responses:
+        '204':
+          description: Ambiente dado de baja.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------- availability-rules
+  /training-environments/{id}/availability-rules:
+    parameters:
+      - $ref: '#/components/parameters/EnvironmentId'
+    get:
+      operationId: listAvailabilityRules
+      tags: [availability-rules]
+      summary: Reglas de disponibilidad recurrente del ambiente (hasta 24 por ambiente).
+      x-required-feature: ENV_VIEW
+      parameters:
+        - name: day_of_week
+          in: query
+          required: false
+          description: 1=Lunes … 7=Domingo.
+          schema: { type: integer, minimum: 1, maximum: 7 }
+      responses:
+        '200':
+          description: Reglas de disponibilidad del ambiente.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AvailabilityRule' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: createAvailabilityRule
+      tags: [availability-rules]
+      summary: Define una regla recurrente de disponibilidad.
+      description: >-
+        Publica el evento `environment.availability.changed` (change_type=RULE_ADDED);
+        scheduling-service re-sincroniza su read model al recibirlo.
+      x-required-feature: ENV_AVAILABILITY_QUERY
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AvailabilityRuleCreate' }
+      responses:
+        '201':
+          description: Regla creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AvailabilityRule' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /training-environments/{id}/availability-rules/{rule_id}:
+    parameters:
+      - $ref: '#/components/parameters/EnvironmentId'
+      - $ref: '#/components/parameters/RuleId'
+    get:
+      operationId: getAvailabilityRule
+      tags: [availability-rules]
+      summary: Detalle de una regla de disponibilidad.
+      x-required-feature: ENV_VIEW
+      responses:
+        '200':
+          description: Regla de disponibilidad.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AvailabilityRule' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateAvailabilityRule
+      tags: [availability-rules]
+      summary: Reemplaza una regla de disponibilidad.
+      description: >-
+        Publica el evento `environment.availability.changed` (change_type=RULE_MODIFIED).
+      x-required-feature: ENV_AVAILABILITY_QUERY
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AvailabilityRuleUpdate' }
+      responses:
+        '200':
+          description: Regla actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AvailabilityRule' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteAvailabilityRule
+      tags: [availability-rules]
+      summary: Elimina una regla de disponibilidad.
+      description: >-
+        Eliminación física: la tabla `availability_rule` no tiene columnas de soft
+        delete (ver data-model.md). Publica `environment.availability.changed`
+        (change_type=RULE_REMOVED).
+      x-required-feature: ENV_AVAILABILITY_QUERY
+      responses:
+        '204':
+          description: Regla eliminada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------- maintenance
+  /training-environments/{id}/maintenance:
+    parameters:
+      - $ref: '#/components/parameters/EnvironmentId'
+    get:
+      operationId: listMaintenancePeriods
+      tags: [maintenance]
+      summary: Períodos de mantenimiento del ambiente.
+      x-required-feature: ENV_VIEW
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: Filtra períodos que se solapan con el rango (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de solapamiento (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Períodos de mantenimiento del ambiente.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Maintenance' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: createMaintenancePeriod
+      tags: [maintenance]
+      summary: Registra un período de mantenimiento y bloquea el ambiente.
+      description: >-
+        Publica el evento `environment.maintenance.started`; scheduling-service
+        re-sincroniza su read model al recibirlo.
+      x-required-feature: ENV_MAINTENANCE_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaintenanceCreate' }
+      responses:
+        '201':
+          description: Mantenimiento registrado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Maintenance' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /training-environments/{id}/maintenance/{maintenance_id}:
+    parameters:
+      - $ref: '#/components/parameters/EnvironmentId'
+      - $ref: '#/components/parameters/MaintenanceId'
+    get:
+      operationId: getMaintenancePeriod
+      tags: [maintenance]
+      summary: Detalle de un período de mantenimiento.
+      description: >-
+        Registro append-only (sin columnas de actualización ni borrado en el
+        modelo de datos): no admite PUT/PATCH/DELETE.
+      x-required-feature: ENV_VIEW
+      responses:
+        '200':
+          description: Período de mantenimiento.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Maintenance' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------- reservations
+  /reservations:
+    get:
+      operationId: listReservations
+      tags: [reservations]
+      summary: Lista paginada de reservas puntuales.
+      x-required-feature: ENV_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: environment_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: requester_id
+          in: query
+          required: false
+          description: Referencia externa a iam-service.
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PENDING, CONFIRMED, CANCELLED]
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de reservation_date (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de reservation_date (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Página de reservas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Reservation' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createReservation
+      tags: [reservations]
+      summary: Crea una reserva puntual sobre un ambiente.
+      description: >-
+        Puede fallar con `409 Conflict` (código `RESERVATION_OVERLAP`) porque la
+        base de datos impone no-solapamiento por ambiente mediante una constraint
+        `EXCLUDE` GiST sobre reservas no canceladas (ver data-model.md). Publica el
+        evento `environment.reservation.created` al confirmarse.
+      x-required-feature: ENV_RESERVATION_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationCreate' }
+      responses:
+        '201':
+          description: Reserva creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reservation' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /reservations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ReservationId'
+    get:
+      operationId: getReservation
+      tags: [reservations]
+      summary: Detalle de una reserva.
+      x-required-feature: ENV_VIEW
+      responses:
+        '200':
+          description: Reserva.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reservation' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    patch:
+      operationId: updateReservation
+      tags: [reservations]
+      summary: Actualiza parcialmente una reserva (horario o estado).
+      description: >-
+        Reprogramar horario/fecha puede fallar con `409 Conflict`
+        (`RESERVATION_OVERLAP`) por la misma constraint `EXCLUDE`.
+      x-required-feature: ENV_RESERVATION_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationUpdate' }
+      responses:
+        '200':
+          description: Reserva actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reservation' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: cancelReservation
+      tags: [reservations]
+      summary: Cancela la reserva (baja lógica vía status = CANCELLED).
+      description: >-
+        Eliminación lógica por defecto (ADR-004): la tabla `reservation` no tiene
+        `deleted_at`; el estado de negocio `status` cumple ese rol, por lo que
+        cancelar transiciona `status` a `CANCELLED` en vez de borrar la fila.
+      x-required-feature: ENV_RESERVATION_MANAGE
+      responses:
+        '204':
+          description: Reserva cancelada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------- reports (own domain)
+  /reports/environment-utilization:
+    get:
+      operationId: reportEnvironmentUtilization
+      tags: [reports]
+      summary: Ocupación/utilización de ambientes en un rango de fechas.
+      description: >-
+        Reporte propio del dominio training-environment. Solo lectura; cruza
+        `environment` con `availability_rule`, `maintenance` y `reservation` para
+        calcular horas disponibles, reservadas y en mantenimiento por ambiente.
+        Inventario — Usuarios: coordinadores, scheduling-service, monitoring-service;
+        Frecuencia: on-demand; Formato: JSON; Fuente: `environment`, `availability_rule`,
+        `maintenance`, `reservation`. Mide disponibilidad/utilización física del ambiente a
+        partir de las tablas propias de training-environment; para la ocupación por sesiones
+        de horario efectivamente programadas, ver `environment-occupancy` en scheduling.yaml.
+      x-required-feature: ENVIRONMENT_REPORT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - name: training_center_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: environment_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: environment_type_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: true
+          description: Inicio del período a calcular (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: true
+          description: Fin del período a calcular (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Página de utilización por ambiente.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EnvironmentUtilization' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+  /health:
+    get:
+      operationId: health
+      tags: [health]
+      summary: Liveness probe del servicio.
+      security: []
+      responses:
+        '200':
+          description: Servicio vivo.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+components:
+  parameters:
+    EnvironmentId:
+      name: id
+      in: path
+      required: true
+      description: UUID del ambiente de formación.
+      schema: { type: string, format: uuid }
+    EnvironmentTypeId:
+      name: id
+      in: path
+      required: true
+      description: UUID del tipo de ambiente.
+      schema: { type: string, format: uuid }
+    RuleId:
+      name: rule_id
+      in: path
+      required: true
+      description: UUID de la regla de disponibilidad.
+      schema: { type: string, format: uuid }
+    MaintenanceId:
+      name: maintenance_id
+      in: path
+      required: true
+      description: UUID del período de mantenimiento.
+      schema: { type: string, format: uuid }
+    ReservationId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la reserva.
+      schema: { type: string, format: uuid }
+
+  schemas:
+    EnvironmentType:
+      type: object
+      required: [id, code, name, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, maxLength: 20, example: LAB }
+        name: { type: string, maxLength: 100, example: Laboratorio }
+        description:
+          type: [string, 'null']
+        created_at: { type: string, format: date-time }
+
+    EnvironmentTypeCreate:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, maxLength: 20 }
+        name: { type: string, maxLength: 100 }
+        description:
+          type: [string, 'null']
+
+    Environment:
+      type: object
+      required: [id, environment_type_id, training_center_id, name, capacity, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        environment_type_id: { type: string, format: uuid }
+        training_center_id:
+          type: string
+          format: uuid
+          description: Referencia externa a reference-data-service (sin FK física).
+        name: { type: string, maxLength: 100, example: Aula 201 }
+        capacity:
+          type: integer
+          minimum: 1
+          description: Número máximo de personas.
+        location:
+          type: [string, 'null']
+          maxLength: 200
+        is_active:
+          type: boolean
+          description: false = ambiente fuera de servicio.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    EnvironmentCreate:
+      type: object
+      required: [environment_type_id, training_center_id, name, capacity]
+      properties:
+        environment_type_id: { type: string, format: uuid }
+        training_center_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+        capacity: { type: integer, minimum: 1 }
+        location:
+          type: [string, 'null']
+          maxLength: 200
+
+    EnvironmentUpdate:
+      type: object
+      properties:
+        environment_type_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+        capacity: { type: integer, minimum: 1 }
+        location:
+          type: [string, 'null']
+          maxLength: 200
+        is_active: { type: boolean }
+
+    AvailabilityRule:
+      type: object
+      required: [id, environment_id, day_of_week, start_time, end_time, effective_from, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        environment_id: { type: string, format: uuid }
+        day_of_week:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: 1=Lunes … 7=Domingo.
+        start_time: { type: string, format: time, description: 'Formato HH:MM:SS.' }
+        end_time: { type: string, format: time, description: 'Formato HH:MM:SS.' }
+        effective_from: { type: string, format: date }
+        effective_until:
+          type: [string, 'null']
+          format: date
+          description: null = vigencia indefinida.
+        created_at: { type: string, format: date-time }
+
+    AvailabilityRuleCreate:
+      type: object
+      required: [day_of_week, start_time, end_time, effective_from]
+      properties:
+        day_of_week: { type: integer, minimum: 1, maximum: 7 }
+        start_time: { type: string, format: time }
+        end_time: { type: string, format: time }
+        effective_from: { type: string, format: date }
+        effective_until:
+          type: [string, 'null']
+          format: date
+
+    AvailabilityRuleUpdate:
+      type: object
+      required: [day_of_week, start_time, end_time, effective_from]
+      properties:
+        day_of_week: { type: integer, minimum: 1, maximum: 7 }
+        start_time: { type: string, format: time }
+        end_time: { type: string, format: time }
+        effective_from: { type: string, format: date }
+        effective_until:
+          type: [string, 'null']
+          format: date
+
+    Maintenance:
+      type: object
+      required: [id, environment_id, start_date, end_date, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        environment_id: { type: string, format: uuid }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        reason:
+          type: [string, 'null']
+          description: Motivo del mantenimiento (columna real `reason`, nullable).
+        created_by:
+          type: string
+          format: uuid
+          description: Referencia externa a iam-service (sin FK física).
+        created_at: { type: string, format: date-time }
+
+    MaintenanceCreate:
+      type: object
+      required: [start_date, end_date]
+      properties:
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        reason: { type: [string, 'null'] }
+
+    Reservation:
+      type: object
+      required: [id, environment_id, reservation_date, start_time, end_time, requester_id, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        environment_id: { type: string, format: uuid }
+        reservation_date: { type: string, format: date }
+        start_time: { type: string, format: time }
+        end_time: { type: string, format: time }
+        reason:
+          type: [string, 'null']
+        requester_id:
+          type: string
+          format: uuid
+          description: Referencia externa a iam-service (sin FK física).
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, CANCELLED]
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ReservationCreate:
+      type: object
+      required: [environment_id, reservation_date, start_time, end_time]
+      properties:
+        environment_id: { type: string, format: uuid }
+        reservation_date: { type: string, format: date }
+        start_time: { type: string, format: time }
+        end_time: { type: string, format: time }
+        reason:
+          type: [string, 'null']
+
+    ReservationUpdate:
+      type: object
+      properties:
+        reservation_date: { type: string, format: date }
+        start_time: { type: string, format: time }
+        end_time: { type: string, format: time }
+        reason:
+          type: [string, 'null']
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, CANCELLED]
+
+    EnvironmentUtilization:
+      type: object
+      required:
+        - environment_id
+        - environment_name
+        - training_center_id
+        - environment_type_code
+        - period_from
+        - period_to
+        - available_hours
+        - reserved_hours
+        - maintenance_hours
+        - utilization_percentage
+      properties:
+        environment_id: { type: string, format: uuid }
+        environment_name: { type: string }
+        training_center_id: { type: string, format: uuid }
+        environment_type_code: { type: string }
+        period_from: { type: string, format: date }
+        period_to: { type: string, format: date }
+        available_hours:
+          type: number
+          description: Horas totales cubiertas por reglas de disponibilidad en el período.
+        reserved_hours:
+          type: number
+          description: Horas ocupadas por reservas no canceladas en el período.
+        maintenance_hours:
+          type: number
+          description: Horas bloqueadas por mantenimiento en el período.
+        utilization_percentage:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: reserved_hours / available_hours * 100.
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT RS256 emitido por iam-service; verificado localmente vía JWKS.
+
+
+

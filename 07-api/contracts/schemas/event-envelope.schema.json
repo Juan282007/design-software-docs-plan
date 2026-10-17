@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Academic domain event envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "version",
+    "timestamp",
+    "source_service",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "type": "string",
+      "pattern": "^academic\\.[a-z][a-z0-9_-]*\\.[a-z][a-z0-9_.-]*$"
+    },
+    "version": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_service": {
+      "const": "academic-management-service"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "correlation_id": {
+      "type": "string",
+      "format": "uuid"
+    }
+  }
+}

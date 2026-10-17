@@ -1,0 +1,14 @@
+# Configuración de lint para los contratos OpenAPI de Horarios SENA.
+# Se aplica a 07-api/contracts/openapi/*.yaml (specs por servicio + _shared.yaml).
+extends:
+  - recommended
+rules:
+  # _shared.yaml es una librería de componentes referenciada por $ref desde otros
+  # archivos; sus componentes aparecen "no usados" dentro del propio archivo.
+  no-unused-components: off
+  # Specs internos del proyecto; la licencia del repo aplica a nivel repositorio.
+  info-license: off
+  # Contacto opcional para specs internos.
+  info-contact: off
+  # operationId no es obligatorio en specs de diseño (se puede exigir al publicar).
+  operation-operationId: warn

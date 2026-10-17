@@ -1,0 +1,1289 @@
+openapi: 3.1.0
+info:
+  title: Monitoring Service API — Horarios SENA
+  version: 1.0.0
+  description: >-
+    Seguimiento de fichas en ejecución: KPIs medidos, alertas por umbral, sesiones de
+    seguimiento periódico y planes de mejoramiento a nivel de ficha. Alineado con el modelo
+    de datos de monitoring-service (`monitoring_db`)
+    y con 07-api/guidelines.md. Fuente de verdad del contrato. La extensión
+    `x-required-feature` declara el feature RBAC que exige cada operación (o
+    `x-required-feature-any: [A, B]` cuando acepta cualquiera de varios, p. ej.
+    `MON_DASHBOARD_FULL` o `MON_DASHBOARD_OWN`) (ver
+    rbac-design.md, módulo `MOD_MONITORING`). Reportes descentralizados: este servicio
+    sólo pública los KPIs/indicadores de su propio dominio (guidelines §11).
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: catalogs
+    description: Catálogos propios (tipos de KPI, tipos de alerta, niveles de riesgo, estados de KPI).
+  - name: tracking
+    description: Seguimiento consolidado de ficha y sesiones periódicas de seguimiento.
+  - name: kpis
+    description: Mediciones de KPI por ficha (serie temporal).
+  - name: alerts
+    description: Alertas generadas por umbral y su resolución.
+  - name: improvement-plans
+    description: Planes de mejoramiento a nivel de ficha.
+  - name: reports
+    description: Reportes propios del dominio de monitoreo.
+
+paths:
+  # ---------------------------------------------------------------- catalogs: kpi-types
+  /kpi-types:
+    get:
+      operationId: listKpiTypes
+      tags: [catalogs]
+      summary: Lista paginada de tipos de KPI configurables.
+      x-required-feature: MON_KPI_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: code
+          in: query
+          required: false
+          description: Filtra por código exacto (ej. ATTENDANCE, DROPOUT_RISK).
+          schema: { type: string }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de tipos de KPI.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/KpiType' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createKpiType
+      tags: [catalogs]
+      summary: Crea un tipo de KPI configurable.
+      x-required-feature: MON_CATALOG_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KpiTypeCreate' }
+      responses:
+        '201':
+          description: Tipo de KPI creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KpiType' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /kpi-types/{id}:
+    parameters:
+      - $ref: '#/components/parameters/KpiTypeId'
+    get:
+      operationId: getKpiType
+      tags: [catalogs]
+      summary: Detalle de un tipo de KPI.
+      x-required-feature: MON_KPI_VIEW
+      responses:
+        '200':
+          description: Tipo de KPI.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KpiType' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateKpiType
+      tags: [catalogs]
+      summary: Actualiza un tipo de KPI configurable.
+      x-required-feature: MON_CATALOG_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KpiTypeUpdate' }
+      responses:
+        '200':
+          description: Tipo de KPI actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KpiType' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteKpiType
+      tags: [catalogs]
+      summary: Desactiva un tipo de KPI (soft delete, is_active = false).
+      x-required-feature: MON_CATALOG_MANAGE
+      responses:
+        '204':
+          description: Tipo de KPI desactivado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- catalogs: alert-types
+  /alert-types:
+    get:
+      operationId: listAlertTypes
+      tags: [catalogs]
+      summary: Lista paginada de tipos de alerta configurables.
+      x-required-feature: MON_ALERT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: code
+          in: query
+          required: false
+          description: Filtra por código exacto (ej. LOW_ATTENDANCE, INSTRUCTOR_OVERLOAD).
+          schema: { type: string }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de tipos de alerta.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AlertType' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createAlertType
+      tags: [catalogs]
+      summary: Crea un tipo de alerta configurable.
+      x-required-feature: MON_CATALOG_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AlertTypeCreate' }
+      responses:
+        '201':
+          description: Tipo de alerta creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertType' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /alert-types/{id}:
+    parameters:
+      - $ref: '#/components/parameters/AlertTypeId'
+    get:
+      operationId: getAlertType
+      tags: [catalogs]
+      summary: Detalle de un tipo de alerta.
+      x-required-feature: MON_ALERT_VIEW
+      responses:
+        '200':
+          description: Tipo de alerta.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertType' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateAlertType
+      tags: [catalogs]
+      summary: Actualiza un tipo de alerta configurable (ej. umbral por defecto).
+      x-required-feature: MON_CATALOG_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AlertTypeUpdate' }
+      responses:
+        '200':
+          description: Tipo de alerta actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertType' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteAlertType
+      tags: [catalogs]
+      summary: Desactiva un tipo de alerta (soft delete, is_active = false).
+      x-required-feature: MON_CATALOG_MANAGE
+      responses:
+        '204':
+          description: Tipo de alerta desactivado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- catalogs: risk-levels / kpi-statuses (solo lectura)
+  /risk-levels:
+    get:
+      operationId: listRiskLevels
+      tags: [catalogs]
+      summary: Niveles de severidad de riesgo (valores fijos, ordenados por criticidad).
+      x-required-feature: MON_ALERT_VIEW
+      responses:
+        '200':
+          description: Lista de niveles de riesgo.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RiskLevel' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+  /kpi-statuses:
+    get:
+      operationId: listKpiStatuses
+      tags: [catalogs]
+      summary: Estados de KPI y su nivel de riesgo asociado.
+      x-required-feature: MON_KPI_VIEW
+      responses:
+        '200':
+          description: Lista de estados de KPI.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/KpiStatus' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+  # ---------------------------------------------------------------- ficha-trackings
+  /ficha-trackings:
+    get:
+      operationId: listFichaTrackings
+      tags: [tracking]
+      summary: Lista paginada de seguimientos de ficha.
+      x-required-feature-any: [MON_DASHBOARD_FULL, MON_DASHBOARD_OWN]
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: ficha_id
+          in: query
+          required: false
+          description: Referencia externa a enrollment_ficha.id (academic-management-service).
+          schema: { type: string, format: uuid }
+        - name: assigned_instructor_id
+          in: query
+          required: false
+          description: Referencia externa a instructor.id (actors-service).
+          schema: { type: string, format: uuid }
+        - name: overall_status
+          in: query
+          required: false
+          description: Filtra por código de kpi_status (ej. ON_TRACK, AT_RISK, CRITICAL).
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página de seguimientos de ficha.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/FichaTracking' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+  /ficha-trackings/{id}:
+    parameters:
+      - $ref: '#/components/parameters/FichaTrackingId'
+    get:
+      operationId: getFichaTracking
+      tags: [tracking]
+      summary: Seguimiento consolidado de una ficha (estado global, alertas activas, próximas fechas).
+      description: >-
+        Solo lectura: `ficha_tracking` se recalcula por el `alert-worker` a partir de
+        eventos de dominio; no se crea ni actualiza por REST.
+      x-required-feature: MON_DASHBOARD_OWN
+      responses:
+        '200':
+          description: Seguimiento de la ficha.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FichaTracking' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /ficha-trackings/{id}/tracking-sessions:
+    parameters:
+      - $ref: '#/components/parameters/FichaTrackingId'
+    get:
+      operationId: listTrackingSessions
+      tags: [tracking]
+      summary: Sesiones de seguimiento de la ficha (cronológico).
+      x-required-feature: MON_TRACKING_SESSION_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: session_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACADEMIC, WELLNESS, PROJECT, PRODUCTIVE_STAGE]
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de session_date (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de session_date (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Página de sesiones de seguimiento.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TrackingSession' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: createTrackingSession
+      tags: [tracking]
+      summary: Registra una sesión de seguimiento (append-only).
+      description: >-
+        Normativa SENA: seguimiento mínimo mensual para fichas en Ejecución
+        (Acuerdo 00003/2012). `attendance_percentage` es calculada por el servidor.
+      x-required-feature: MON_TRACKING_SESSION_CREATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrackingSessionCreate' }
+      responses:
+        '201':
+          description: Sesión de seguimiento registrada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrackingSession' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /ficha-trackings/{id}/tracking-sessions/{session_id}:
+    parameters:
+      - $ref: '#/components/parameters/FichaTrackingId'
+      - name: session_id
+        in: path
+        required: true
+        description: UUID de la sesión de seguimiento.
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getTrackingSession
+      tags: [tracking]
+      summary: Detalle de una sesión de seguimiento.
+      x-required-feature: MON_TRACKING_SESSION_VIEW
+      responses:
+        '200':
+          description: Sesión de seguimiento.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrackingSession' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- kpi-trackings (serie temporal)
+  /kpi-trackings:
+    get:
+      operationId: listKpiTrackings
+      tags: [kpis]
+      summary: Mediciones de KPI (paginación por cursor; colección de crecimiento continuo).
+      description: >-
+        `kpi_tracking` se produce por el `alert-worker` a partir de eventos de dominio
+        y también puede registrarse por REST mediante `POST /kpi-trackings` para
+        conciliación con el endpoint implementado RecordKpi. Particionada por `measured_at`.
+      x-required-feature: MON_KPI_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/cursor'
+        - $ref: '_shared.yaml#/components/parameters/limit'
+        - name: ficha_tracking_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: kpi_type
+          in: query
+          required: false
+          description: Filtra por código de kpi_type (ej. ATTENDANCE).
+          schema: { type: string }
+        - name: kpi_status
+          in: query
+          required: false
+          description: Filtra por código de kpi_status (ej. AT_RISK).
+          schema: { type: string }
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de measured_at (inclusive).
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de measured_at (exclusive).
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Página de mediciones de KPI.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/KpiTracking' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/CursorPagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: recordKpi
+      tags: [kpis]
+      summary: Registra una medición KPI.
+      description: >-
+        Endpoint de escritura rastreado como RecordKpi en el servicio. Crea una medición
+        `kpi_tracking` y deja al ciclo de vida de alertas/estado a cargo del
+        `alert-worker`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '201':
+          description: Medición de KPI registrada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KpiTracking' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /kpi-trackings/{id}:
+    parameters:
+      - $ref: '#/components/parameters/KpiTrackingId'
+    get:
+      operationId: getKpiTracking
+      tags: [kpis]
+      summary: Detalle de una medición puntual de KPI.
+      x-required-feature: MON_KPI_VIEW
+      responses:
+        '200':
+          description: Medición de KPI.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KpiTracking' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- generated-alerts
+  /generated-alerts:
+    get:
+      operationId: listGeneratedAlerts
+      tags: [alerts]
+      summary: Alertas generadas (paginación por cursor; colección de crecimiento continuo).
+      description: >-
+        Solo lectura: `generated_alert` se produce por el `alert-worker` a partir de
+        eventos de dominio; no se crea por REST. Esta API permite consultarlas y
+        resolverlas.
+      x-required-feature: MON_ALERT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/cursor'
+        - $ref: '_shared.yaml#/components/parameters/limit'
+        - name: ficha_tracking_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: alert_type
+          in: query
+          required: false
+          description: Filtra por código de alert_type (ej. LOW_ATTENDANCE).
+          schema: { type: string }
+        - name: risk_level
+          in: query
+          required: false
+          description: Filtra por código de risk_level.
+          schema:
+            type: string
+            enum: [INFO, LOW, MEDIUM, HIGH, CRITICAL]
+        - name: is_resolved
+          in: query
+          required: false
+          schema: { type: boolean }
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de generated_at (inclusive).
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de generated_at (exclusive).
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Página de alertas generadas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/GeneratedAlert' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/CursorPagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+  /generated-alerts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/GeneratedAlertId'
+    get:
+      operationId: getGeneratedAlert
+      tags: [alerts]
+      summary: Detalle de una alerta generada.
+      x-required-feature: MON_ALERT_VIEW
+      responses:
+        '200':
+          description: Alerta generada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeneratedAlert' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /generated-alerts/{id}/resolve:
+    parameters:
+      - $ref: '#/components/parameters/GeneratedAlertId'
+    put:
+      operationId: resolveGeneratedAlert
+      tags: [alerts]
+      summary: Marca la alerta como resuelta (is_resolved, resolved_by, resolved_at).
+      x-required-feature: MON_ALERT_RESOLVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GeneratedAlertResolve' }
+      responses:
+        '200':
+          description: Alerta resuelta.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeneratedAlert' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  # ---------------------------------------------------------------- improvement-plans
+  /improvement-plans:
+    get:
+      operationId: listImprovementPlans
+      tags: [improvement-plans]
+      summary: Lista paginada de planes de mejoramiento a nivel de ficha.
+      x-required-feature: MON_IMPROVEMENT_PLAN_MANAGE
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: ficha_tracking_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: learner_id
+          in: query
+          required: false
+          description: Referencia externa a learner.id (actors-service).
+          schema: { type: string, format: uuid }
+        - name: instructor_id
+          in: query
+          required: false
+          description: Referencia externa a instructor.id (actors-service).
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PENDING, IN_PROGRESS, COMPLETED, CANCELLED]
+      responses:
+        '200':
+          description: Página de planes de mejoramiento.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ImprovementPlan' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createImprovementPlan
+      tags: [improvement-plans]
+      summary: Crea un plan de mejoramiento (opcionalmente ligado a una alerta activa).
+      x-required-feature: MON_IMPROVEMENT_PLAN_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImprovementPlanCreate' }
+      responses:
+        '201':
+          description: Plan de mejoramiento creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementPlan' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /improvement-plans/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ImprovementPlanId'
+    get:
+      operationId: getImprovementPlan
+      tags: [improvement-plans]
+      summary: Detalle de un plan de mejoramiento.
+      x-required-feature: MON_IMPROVEMENT_PLAN_MANAGE
+      responses:
+        '200':
+          description: Plan de mejoramiento.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementPlan' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateImprovementPlan
+      tags: [improvement-plans]
+      summary: Actualiza el plan de mejoramiento (avance, cierre o cancelación).
+      description: >-
+        Transición de estado válida: PENDING → IN_PROGRESS → COMPLETED / CANCELLED.
+        Una transición inválida (ej. plan ya COMPLETED) retorna 409.
+      x-required-feature: MON_IMPROVEMENT_PLAN_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImprovementPlanUpdate' }
+      responses:
+        '200':
+          description: Plan de mejoramiento actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementPlan' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  # ---------------------------------------------------------------- reports (own domain)
+  /reports/kpi-summary:
+    get:
+      operationId: reportKpiSummary
+      tags: [reports]
+      summary: Última medición de cada KPI por ficha, con su estado y nivel de riesgo.
+      description: >-
+        Reporte propio del dominio de monitoreo. Cruza `kpi_tracking` (última medición
+        por ficha_tracking_id + kpi_type_id) con `kpi_type`, `kpi_status` y `risk_level`.
+        No incluye datos de otros servicios (solo referencias externas por id). Solo
+        lectura. Inventario — Usuarios: coordinación académica, instructores de
+        seguimiento, panel de monitoreo; Frecuencia: on-demand; Formato: JSON; Fuente:
+        `monitoring_db.kpi_tracking`, `kpi_type`, `kpi_status`, `risk_level`.
+      x-required-feature: MON_REPORT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: ficha_tracking_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: kpi_type
+          in: query
+          required: false
+          description: Filtra por código de kpi_type.
+          schema: { type: string }
+        - name: status
+          in: query
+          required: false
+          description: Filtra por código de kpi_status.
+          schema: { type: string }
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de measured_at (inclusive).
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de measured_at (exclusive).
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Página del reporte de KPIs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/KpiSummaryReportEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /reports/indicators:
+    get:
+      operationId: reportIndicators
+      tags: [reports]
+      summary: Indicadores agregados de salud de fichas por estado y nivel de riesgo.
+      description: >-
+        Reporte propio del dominio de monitoreo. Agrega `ficha_tracking` por
+        `overall_status_id` (vía `kpi_status` → `risk_level`), contando fichas y
+        promediando `active_alert_count`. Vista de tablero, no de detalle por ficha
+        (para eso ver `/reports/kpi-summary` o `/ficha-trackings`). No incluye datos
+        de otros servicios. Solo lectura. Inventario — Usuarios: dirección de centro,
+        coordinación académica; Frecuencia: on-demand (refrescado por triggers de
+        `active_alert_count`); Formato: JSON; Fuente: `monitoring_db.ficha_tracking`,
+        `kpi_status`, `risk_level`.
+      x-required-feature: MON_REPORT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: status
+          in: query
+          required: false
+          description: Filtra por código de kpi_status.
+          schema: { type: string }
+        - name: assigned_instructor_id
+          in: query
+          required: false
+          description: Restringe el agregado a las fichas de un instructor. Referencia externa a actors-service.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Página del reporte de indicadores.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/IndicatorsReportEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /health:
+    get:
+      operationId: health
+      tags: [health]
+      summary: Liveness probe del servicio.
+      security: []
+      responses:
+        '200':
+          description: Servicio vivo.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /ready:
+    get:
+      operationId: readiness
+      tags: [health]
+      summary: Readiness probe del servicio.
+      description: Valida conectividad con `monitoring_db` y RabbitMQ/AMQP antes de recibir tráfico.
+      security: []
+      responses:
+        '200':
+          description: Servicio listo para recibir tráfico.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, components]
+                properties:
+                  status:
+                    type: string
+                    enum: [ready]
+                  components:
+                    type: object
+                    additionalProperties: true
+        '503':
+          description: Alguna dependencia requerida no está lista.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+components:
+  parameters:
+    KpiTypeId:
+      name: id
+      in: path
+      required: true
+      description: UUID del tipo de KPI.
+      schema: { type: string, format: uuid }
+    AlertTypeId:
+      name: id
+      in: path
+      required: true
+      description: UUID del tipo de alerta.
+      schema: { type: string, format: uuid }
+    FichaTrackingId:
+      name: id
+      in: path
+      required: true
+      description: UUID del seguimiento de ficha.
+      schema: { type: string, format: uuid }
+    KpiTrackingId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la medición de KPI.
+      schema: { type: string, format: uuid }
+    GeneratedAlertId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la alerta generada.
+      schema: { type: string, format: uuid }
+    ImprovementPlanId:
+      name: id
+      in: path
+      required: true
+      description: UUID del plan de mejoramiento.
+      schema: { type: string, format: uuid }
+  schemas:
+    KpiType:
+      type: object
+      required: [id, code, name, unit, is_active]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, maxLength: 50 }
+        name: { type: string, maxLength: 120 }
+        description:
+          type: [string, 'null']
+        unit:
+          type: string
+          enum: [PERCENTAGE, COUNT, HOURS, DAYS]
+        is_active: { type: boolean }
+
+    KpiTypeCreate:
+      type: object
+      required: [code, name, unit]
+      properties:
+        code: { type: string, maxLength: 50 }
+        name: { type: string, maxLength: 120 }
+        description: { type: string }
+        unit:
+          type: string
+          enum: [PERCENTAGE, COUNT, HOURS, DAYS]
+
+    KpiTypeUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 120 }
+        description: { type: string }
+        unit:
+          type: string
+          enum: [PERCENTAGE, COUNT, HOURS, DAYS]
+        is_active: { type: boolean }
+
+    AlertType:
+      type: object
+      required: [id, code, name, affects_ficha_status, is_active]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, maxLength: 50 }
+        name: { type: string, maxLength: 120 }
+        description:
+          type: [string, 'null']
+        default_threshold:
+          type: [number, 'null']
+          description: 'Valor umbral por defecto (ej. 0.80 = 80% asistencia mínima).'
+        threshold_unit:
+          type: [string, 'null']
+          enum: [PERCENTAGE, COUNT, DAYS, HOURS, null]
+        affects_ficha_status:
+          type: boolean
+          description: Si true, esta alerta puede cambiar el overall_status_id de la ficha.
+        is_active: { type: boolean }
+
+    AlertTypeCreate:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, maxLength: 50 }
+        name: { type: string, maxLength: 120 }
+        description: { type: string }
+        default_threshold: { type: number }
+        threshold_unit:
+          type: string
+          enum: [PERCENTAGE, COUNT, DAYS, HOURS]
+        affects_ficha_status: { type: boolean, default: false }
+
+    AlertTypeUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 120 }
+        description: { type: string }
+        default_threshold: { type: number }
+        threshold_unit:
+          type: string
+          enum: [PERCENTAGE, COUNT, DAYS, HOURS]
+        affects_ficha_status: { type: boolean }
+        is_active: { type: boolean }
+
+    RiskLevel:
+      type: object
+      required: [id, code, label, color_hex, priority_order]
+      properties:
+        id: { type: string, format: uuid }
+        code:
+          type: string
+          enum: [INFO, LOW, MEDIUM, HIGH, CRITICAL]
+        label: { type: string, maxLength: 60 }
+        color_hex: { type: string, maxLength: 7, example: '#E53E3E' }
+        priority_order:
+          type: integer
+          description: 1 = mayor urgencia.
+
+    KpiStatus:
+      type: object
+      required: [id, code, risk_level_id]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, maxLength: 20 }
+        description:
+          type: [string, 'null']
+        risk_level_id: { type: string, format: uuid }
+
+    FichaTracking:
+      type: object
+      required: [id, ficha_id, assigned_instructor_id, overall_status_id, active_alert_count, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        ficha_id:
+          type: string
+          format: uuid
+          description: Referencia lógica a enrollment_ficha.id en academic-management-service (sin FK física).
+        assigned_instructor_id:
+          type: string
+          format: uuid
+          description: Referencia lógica a instructor.id en actors-service (sin FK física).
+        overall_status_id:
+          type: string
+          format: uuid
+          description: FK a kpi_status; estado calculado con base en los KPIs activos de la ficha.
+        active_alert_count:
+          type: integer
+          description: Contador desnormalizado (mantenido por trigger) de alertas sin resolver.
+        last_tracking_date:
+          type: [string, 'null']
+          format: date
+        next_tracking_date:
+          type: [string, 'null']
+          format: date
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    TrackingSession:
+      type: object
+      required: [id, ficha_tracking_id, instructor_id, session_date, session_type, requires_follow_up, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        ficha_tracking_id: { type: string, format: uuid }
+        instructor_id:
+          type: string
+          format: uuid
+          description: Referencia lógica a instructor.id en actors-service (sin FK física).
+        session_date: { type: string, format: date }
+        session_type:
+          type: string
+          enum: [ACADEMIC, WELLNESS, PROJECT, PRODUCTIVE_STAGE]
+        attendance_count:
+          type: [integer, 'null']
+        total_learners:
+          type: [integer, 'null']
+        attendance_percentage:
+          type: [number, 'null']
+          readOnly: true
+          description: Calculada por PostgreSQL (columna generada) = attendance_count / total_learners * 100.
+        curriculum_progress_percentage:
+          type: [number, 'null']
+        observations:
+          type: [string, 'null']
+        requires_follow_up:
+          type: boolean
+          description: Si true, debe generarse una alerta asociada.
+        created_at: { type: string, format: date-time }
+
+    TrackingSessionCreate:
+      type: object
+      required: [instructor_id, session_date, session_type]
+      properties:
+        instructor_id: { type: string, format: uuid }
+        session_date: { type: string, format: date }
+        session_type:
+          type: string
+          enum: [ACADEMIC, WELLNESS, PROJECT, PRODUCTIVE_STAGE]
+        attendance_count: { type: integer, minimum: 0 }
+        total_learners: { type: integer, minimum: 0 }
+        curriculum_progress_percentage: { type: number, minimum: 0, maximum: 100 }
+        observations: { type: string }
+        requires_follow_up: { type: boolean, default: false }
+
+    KpiTracking:
+      type: object
+      required: [id, ficha_tracking_id, kpi_type_id, current_value, threshold_value, kpi_status_id, period_start, period_end, measured_at]
+      properties:
+        id: { type: string, format: uuid }
+        ficha_tracking_id: { type: string, format: uuid }
+        kpi_type_id: { type: string, format: uuid }
+        current_value: { type: number }
+        threshold_value:
+          type: number
+          description: Umbral de la alerta relacionada al momento de la medición.
+        kpi_status_id: { type: string, format: uuid }
+        period_start: { type: string, format: date }
+        period_end: { type: string, format: date }
+        measured_at: { type: string, format: date-time }
+
+    GeneratedAlert:
+      type: object
+      required: [id, ficha_tracking_id, alert_type_id, risk_level_id, source_event_id, description, is_resolved, generated_at]
+      properties:
+        id: { type: string, format: uuid }
+        ficha_tracking_id: { type: string, format: uuid }
+        alert_type_id: { type: string, format: uuid }
+        risk_level_id: { type: string, format: uuid }
+        source_event_id:
+          type: string
+          format: uuid
+          description: event_id del evento del bus de mensajes que disparó la alerta (no es una entidad consultable).
+        affected_learner_id:
+          type: [string, 'null']
+          format: uuid
+          description: >-
+            Referencia lógica a learner.id en actors-service (sin FK física). Arco
+            exclusivo con affected_instructor_id: como máximo uno de los dos está poblado.
+        affected_instructor_id:
+          type: [string, 'null']
+          format: uuid
+          description: Referencia lógica a instructor.id en actors-service (sin FK física). Ver arco exclusivo.
+        triggered_value:
+          type: [number, 'null']
+        threshold_value:
+          type: [number, 'null']
+        description: { type: string }
+        is_resolved: { type: boolean }
+        resolved_by:
+          type: [string, 'null']
+          format: uuid
+          description: Referencia lógica a user.id en iam-service (sin FK física).
+        resolution_notes:
+          type: [string, 'null']
+        generated_at: { type: string, format: date-time }
+        resolved_at:
+          type: [string, 'null']
+          format: date-time
+        updated_at: { type: string, format: date-time }
+
+    GeneratedAlertResolve:
+      type: object
+      required: [resolution_notes]
+      properties:
+        resolution_notes: { type: string }
+
+    ImprovementPlan:
+      type: object
+      required: [id, ficha_tracking_id, title, description, specific_actions, due_date, status, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        ficha_tracking_id: { type: string, format: uuid }
+        generated_alert_id:
+          type: [string, 'null']
+          format: uuid
+          description: FK a generated_alert; null si el plan es preventivo (no ligado a una alerta).
+        learner_id:
+          type: [string, 'null']
+          format: uuid
+          description: Referencia lógica a learner.id en actors-service (sin FK física); null si aplica a toda la ficha.
+        instructor_id:
+          type: [string, 'null']
+          format: uuid
+          description: Referencia lógica a instructor.id en actors-service (sin FK física).
+        title: { type: string, maxLength: 200 }
+        description: { type: string }
+        specific_actions:
+          type: string
+          description: Acciones concretas con responsables y fechas.
+        due_date: { type: string, format: date }
+        status:
+          type: string
+          enum: [PENDING, IN_PROGRESS, COMPLETED, CANCELLED]
+        completion_notes:
+          type: [string, 'null']
+        created_by:
+          type: string
+          format: uuid
+          description: Referencia lógica a user.id en iam-service (sin FK física).
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ImprovementPlanCreate:
+      type: object
+      required: [ficha_tracking_id, title, description, specific_actions, due_date]
+      properties:
+        ficha_tracking_id: { type: string, format: uuid }
+        generated_alert_id: { type: string, format: uuid }
+        learner_id: { type: string, format: uuid }
+        instructor_id: { type: string, format: uuid }
+        title: { type: string, maxLength: 200 }
+        description: { type: string }
+        specific_actions: { type: string }
+        due_date: { type: string, format: date }
+
+    ImprovementPlanUpdate:
+      type: object
+      properties:
+        title: { type: string, maxLength: 200 }
+        description: { type: string }
+        specific_actions: { type: string }
+        due_date: { type: string, format: date }
+        status:
+          type: string
+          enum: [PENDING, IN_PROGRESS, COMPLETED, CANCELLED]
+        completion_notes: { type: string }
+
+    KpiSummaryReportEntry:
+      type: object
+      required: [ficha_tracking_id, kpi_type_code, kpi_type_name, current_value, unit, kpi_status_code, risk_level_code, measured_at]
+      properties:
+        ficha_tracking_id: { type: string, format: uuid }
+        kpi_type_code: { type: string }
+        kpi_type_name: { type: string }
+        current_value: { type: number }
+        unit:
+          type: string
+          enum: [PERCENTAGE, COUNT, HOURS, DAYS]
+        threshold_value: { type: number }
+        kpi_status_code: { type: string }
+        risk_level_code:
+          type: string
+          enum: [INFO, LOW, MEDIUM, HIGH, CRITICAL]
+        period_start: { type: string, format: date }
+        period_end: { type: string, format: date }
+        measured_at: { type: string, format: date-time }
+
+    IndicatorsReportEntry:
+      type: object
+      required: [kpi_status_code, risk_level_code, ficha_count, as_of]
+      properties:
+        kpi_status_code: { type: string, example: AT_RISK }
+        risk_level_code:
+          type: string
+          enum: [INFO, LOW, MEDIUM, HIGH, CRITICAL]
+        ficha_count:
+          type: integer
+          description: Cantidad de fichas con overall_status_id en este grupo.
+        avg_active_alert_count:
+          type: [number, 'null']
+          description: Promedio de active_alert_count de las fichas del grupo.
+        as_of:
+          type: string
+          format: date-time
+          description: Momento de cálculo del agregado.
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT RS256 emitido por iam-service; verificado localmente vía JWKS.
+
+
+

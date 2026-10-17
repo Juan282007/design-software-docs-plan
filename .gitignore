@@ -1,0 +1,30 @@
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Archivos temporales
+*.tmp
+*.temp
+*.bak
+*.swp
+~$*
+
+# Variables locales y secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa*
+id_ed25519*
+
+# Dependencias o salidas generadas si se usan herramientas locales
+node_modules/
+dist/
+build/
+.cache/

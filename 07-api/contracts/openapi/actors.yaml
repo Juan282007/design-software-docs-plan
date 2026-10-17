@@ -1,0 +1,2017 @@
+openapi: 3.1.0
+info:
+  title: Actors Service API — Horarios SENA
+  version: 1.0.0
+  description: >-
+    Gestión de instructores, aprendices y empresas: contratos, áreas de conocimiento,
+    competencias asignadas, disponibilidad, historial de fichas, etapa productiva,
+    visitas de seguimiento y planes de mejoramiento individual. Alineado con el modelo
+    de datos de actors-service (schema `actors_parameterization`) y con
+    07-api/guidelines.md. Fuente de verdad del contrato. La extensión
+    `x-required-feature` declara el feature RBAC que exige cada operación.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: companies
+    description: Empresas que participan en la etapa productiva.
+  - name: instructors
+    description: Instructores, contratos, áreas, competencias y disponibilidad.
+  - name: learners
+    description: Aprendices y su historial de fichas.
+  - name: tracking
+    description: Etapa productiva, visitas de seguimiento y planes de mejoramiento.
+  - name: reports
+    description: Reportes propios del dominio de actores.
+
+paths:
+  /companies:
+    get:
+      operationId: listCompanies
+      tags: [companies]
+      summary: Lista paginada de empresas.
+      x-required-feature: ACT_COMPANY_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: nit
+          in: query
+          required: false
+          description: Filtra por número de identificación tributaria.
+          schema: { type: string }
+        - name: city_id
+          in: query
+          required: false
+          description: Filtra por municipio (reference-data-service).
+          schema: { type: string, format: uuid }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de empresas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Company' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createCompany
+      tags: [companies]
+      summary: Registra una empresa.
+      x-required-feature: ACT_COMPANY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyCreate' }
+      responses:
+        '201':
+          description: Empresa creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Company' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /companies/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CompanyId'
+    get:
+      operationId: getCompany
+      tags: [companies]
+      summary: Detalle de una empresa.
+      x-required-feature: ACT_COMPANY_VIEW
+      responses:
+        '200':
+          description: Empresa.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Company' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateCompany
+      tags: [companies]
+      summary: Reemplaza los datos de la empresa.
+      x-required-feature: ACT_COMPANY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyUpdate' }
+      responses:
+        '200':
+          description: Empresa actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Company' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    patch:
+      operationId: patchCompany
+      tags: [companies]
+      summary: Actualiza parcialmente la empresa.
+      x-required-feature: ACT_COMPANY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyUpdate' }
+      responses:
+        '200':
+          description: Empresa actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Company' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteCompany
+      tags: [companies]
+      summary: Desactiva la empresa (soft delete, is_active = false).
+      x-required-feature: ACT_COMPANY_MANAGE
+      responses:
+        '204':
+          description: Empresa desactivada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /instructors:
+    get:
+      operationId: listInstructors
+      tags: [instructors]
+      summary: Lista paginada de instructores.
+      x-required-feature: ACT_INSTRUCTOR_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: document_number
+          in: query
+          required: false
+          schema: { type: string }
+        - name: area
+          in: query
+          required: false
+          description: Filtra por nombre de área tecnológica (instructor_area.area_name).
+          schema: { type: string }
+        - name: training_center_id
+          in: query
+          required: false
+          description: Filtra por centro de formación del contrato vigente (reference-data-service).
+          schema: { type: string, format: uuid }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de instructores.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Instructor' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createInstructor
+      tags: [instructors]
+      summary: Crea un instructor.
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstructorCreate' }
+      responses:
+        '201':
+          description: Instructor creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Instructor' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /instructors/{id}:
+    parameters:
+      - $ref: '#/components/parameters/InstructorId'
+    get:
+      operationId: getInstructor
+      tags: [instructors]
+      summary: Detalle de un instructor.
+      x-required-feature: ACT_INSTRUCTOR_VIEW
+      responses:
+        '200':
+          description: Instructor.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Instructor' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateInstructor
+      tags: [instructors]
+      summary: Reemplaza los datos del instructor.
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstructorUpdate' }
+      responses:
+        '200':
+          description: Instructor actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Instructor' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    patch:
+      operationId: patchInstructor
+      tags: [instructors]
+      summary: Actualiza parcialmente el instructor.
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstructorUpdate' }
+      responses:
+        '200':
+          description: Instructor actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Instructor' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteInstructor
+      tags: [instructors]
+      summary: Desactiva el instructor (soft delete, is_active = false).
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      responses:
+        '204':
+          description: Instructor desactivado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /instructors/{id}/areas:
+    parameters:
+      - $ref: '#/components/parameters/InstructorId'
+    get:
+      operationId: listInstructorAreas
+      tags: [instructors]
+      summary: Áreas tecnológicas del instructor.
+      x-required-feature: ACT_INSTRUCTOR_VIEW
+      responses:
+        '200':
+          description: Lista de áreas.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InstructorArea' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: addInstructorArea
+      tags: [instructors]
+      summary: Asigna un área tecnológica al instructor.
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstructorAreaCreate' }
+      responses:
+        '201':
+          description: Área asignada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstructorArea' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  /instructors/{id}/areas/{area_id}:
+    parameters:
+      - $ref: '#/components/parameters/InstructorId'
+      - name: area_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: removeInstructorArea
+      tags: [instructors]
+      summary: Retira un área tecnológica del instructor (soft delete, is_active = false).
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      responses:
+        '204':
+          description: Área retirada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /instructors/{id}/contracts:
+    parameters:
+      - $ref: '#/components/parameters/InstructorId'
+    get:
+      operationId: listInstructorContracts
+      tags: [instructors]
+      summary: Historial de contratos del instructor.
+      x-required-feature: ACT_INSTRUCTOR_VIEW
+      responses:
+        '200':
+          description: Lista de contratos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InstructorContract' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: createInstructorContract
+      tags: [instructors]
+      summary: Registra un nuevo contrato (marca is_current y cierra el contrato vigente anterior).
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstructorContractCreate' }
+      responses:
+        '201':
+          description: Contrato creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstructorContract' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /instructors/{id}/contracts/{contract_id}:
+    parameters:
+      - $ref: '#/components/parameters/InstructorId'
+      - name: contract_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getInstructorContract
+      tags: [instructors]
+      summary: Detalle de un contrato del instructor.
+      x-required-feature: ACT_INSTRUCTOR_VIEW
+      responses:
+        '200':
+          description: Contrato.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstructorContract' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateInstructorContract
+      tags: [instructors]
+      summary: Actualiza un contrato (p. ej. cerrarlo con end_date e is_current = false).
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstructorContractUpdate' }
+      responses:
+        '200':
+          description: Contrato actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstructorContract' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /instructors/{id}/competencies:
+    parameters:
+      - $ref: '#/components/parameters/InstructorId'
+    get:
+      operationId: listInstructorCompetencies
+      tags: [instructors]
+      summary: Competencias asignadas al instructor.
+      x-required-feature: ACT_INSTRUCTOR_VIEW
+      responses:
+        '200':
+          description: Lista de competencias asignadas.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CompetencyAssignment' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: addInstructorCompetency
+      tags: [instructors]
+      summary: Asigna una competencia (referencia a academic-management-service) al instructor.
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompetencyAssignmentCreate' }
+      responses:
+        '201':
+          description: Competencia asignada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompetencyAssignment' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  /instructors/{id}/competencies/{competency_assignment_id}:
+    parameters:
+      - $ref: '#/components/parameters/InstructorId'
+      - name: competency_assignment_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: removeInstructorCompetency
+      tags: [instructors]
+      summary: Revoca una competencia asignada (soft delete, is_active = false).
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      responses:
+        '204':
+          description: Competencia revocada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /instructors/{id}/availability-exceptions:
+    parameters:
+      - $ref: '#/components/parameters/InstructorId'
+    get:
+      operationId: listInstructorAvailabilityExceptions
+      tags: [instructors]
+      summary: Bloqueos de disponibilidad no recurrentes del instructor.
+      x-required-feature: ACT_INSTRUCTOR_VIEW
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango (inclusive), compara contra end_datetime.
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango (exclusive), compara contra start_datetime.
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Lista de excepciones de disponibilidad.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InstructorAvailabilityException' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: createInstructorAvailabilityException
+      tags: [instructors]
+      summary: Registra un bloqueo de disponibilidad (permiso, licencia, incapacidad, etc.).
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstructorAvailabilityExceptionCreate' }
+      responses:
+        '201':
+          description: Excepción registrada; dispara actors.instructor.availability_changed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstructorAvailabilityException' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /instructors/{id}/availability-exceptions/{exception_id}:
+    parameters:
+      - $ref: '#/components/parameters/InstructorId'
+      - name: exception_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: removeInstructorAvailabilityException
+      tags: [instructors]
+      summary: Elimina un bloqueo de disponibilidad registrado por error.
+      x-required-feature: ACT_INSTRUCTOR_MANAGE
+      responses:
+        '204':
+          description: Excepción eliminada; dispara actors.instructor.availability_changed.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /instructors/{id}/activity-log:
+    parameters:
+      - $ref: '#/components/parameters/InstructorId'
+    get:
+      operationId: listInstructorActivityLog
+      tags: [instructors]
+      summary: Bitácora funcional del instructor (solo lectura, append-only).
+      x-required-feature: ACT_INSTRUCTOR_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/cursor'
+        - $ref: '_shared.yaml#/components/parameters/limit'
+      responses:
+        '200':
+          description: Página de eventos de bitácora.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ActivityLogEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/CursorPagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- learners
+  /learners:
+    get:
+      operationId: listLearners
+      tags: [learners]
+      summary: Lista paginada de aprendices.
+      x-required-feature: ACT_LEARNER_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: document_number
+          in: query
+          required: false
+          schema: { type: string }
+        - name: ficha_id
+          in: query
+          required: false
+          description: Filtra por ficha activa (learner_ficha_enrollment.is_current = true).
+          schema: { type: string, format: uuid }
+        - name: enrollment_status_id
+          in: query
+          required: false
+          description: >-
+            Filtra por el estado de la inscripción vigente
+            (learner_ficha_enrollment.enrollment_status_id, is_current = true).
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Página de aprendices.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Learner' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createLearner
+      tags: [learners]
+      summary: Crea un aprendiz.
+      x-required-feature: ACT_LEARNER_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LearnerCreate' }
+      responses:
+        '201':
+          description: Aprendiz creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Learner' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /learners/{id}:
+    parameters:
+      - $ref: '#/components/parameters/LearnerId'
+    get:
+      operationId: getLearner
+      tags: [learners]
+      summary: Detalle de un aprendiz.
+      x-required-feature: ACT_LEARNER_VIEW
+      responses:
+        '200':
+          description: Aprendiz.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Learner' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateLearner
+      tags: [learners]
+      summary: Reemplaza los datos del aprendiz.
+      x-required-feature: ACT_LEARNER_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LearnerUpdate' }
+      responses:
+        '200':
+          description: Aprendiz actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Learner' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    patch:
+      operationId: patchLearner
+      tags: [learners]
+      summary: Actualiza parcialmente el aprendiz.
+      x-required-feature: ACT_LEARNER_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LearnerUpdate' }
+      responses:
+        '200':
+          description: Aprendiz actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Learner' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteLearner
+      tags: [learners]
+      summary: >-
+        Cancela la vinculación del aprendiz (soft delete; transita
+        learner_ficha_enrollment.enrollment_status_id vigente al estado CANCELLED).
+      x-required-feature: ACT_LEARNER_MANAGE
+      responses:
+        '204':
+          description: Aprendiz desvinculado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  /learners/{id}/ficha-enrollments:
+    parameters:
+      - $ref: '#/components/parameters/LearnerId'
+    get:
+      operationId: listLearnerFichaEnrollments
+      tags: [learners]
+      summary: Historial de inscripciones en fichas del aprendiz.
+      x-required-feature: ACT_LEARNER_VIEW
+      responses:
+        '200':
+          description: Lista de inscripciones (histórico y vigente).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LearnerFichaEnrollment' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: createLearnerFichaEnrollment
+      tags: [learners]
+      summary: Inscribe (o traslada) al aprendiz a una ficha; cierra la inscripción vigente anterior.
+      x-required-feature: ACT_LEARNER_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LearnerFichaEnrollmentCreate' }
+      responses:
+        '201':
+          description: Inscripción creada; dispara actors.learner.enrolled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LearnerFichaEnrollment' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /learners/{id}/activity-log:
+    parameters:
+      - $ref: '#/components/parameters/LearnerId'
+    get:
+      operationId: listLearnerActivityLog
+      tags: [learners]
+      summary: Bitácora funcional del aprendiz (solo lectura, append-only).
+      x-required-feature: ACT_LEARNER_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/cursor'
+        - $ref: '_shared.yaml#/components/parameters/limit'
+      responses:
+        '200':
+          description: Página de eventos de bitácora.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ActivityLogEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/CursorPagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+
+  # ---------------------------------------------------------------- internal (service-to-service)
+  /internal/fichas/{ficha_id}/active-learners/count:
+    servers:
+      - url: /
+    get:
+      operationId: countActiveLearnersByFicha
+      tags: [learners]
+      summary: Cuenta aprendices activos por ficha.
+      description: >-
+        Endpoint interno servicio-a-servicio consumido por academic-management-service
+        para validar reducciones de cupo sin acceder directamente a la base de datos
+        de actors-service. La operación es de solo lectura.
+      x-required-feature: ACT_INTERNAL_FICHA_LEARNER_COUNT
+      parameters:
+        - name: ficha_id
+          in: path
+          required: true
+          description: Identificador de la ficha en academic-management-service.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Conteo de aprendices activos de la ficha.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveLearnersCount'
+              examples:
+                without_active_learners:
+                  value:
+                    ficha_id: 00000000-0000-4000-8000-000000000001
+                    active_learners: 0
+                with_active_learners:
+                  value:
+                    ficha_id: 00000000-0000-4000-8000-000000000002
+                    active_learners: 25
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '502':
+          description: Academic Management no disponible para validar la existencia de la ficha.
+          content:
+            application/json:
+              schema:
+                $ref: '_shared.yaml#/components/schemas/Error'
+
+  /internal/learners/by-user/{user_id}/active-ficha:
+    servers:
+      - url: /
+    get:
+      operationId: getActiveFichaByLearnerUser
+      tags: [learners]
+      summary: Consulta la ficha activa de un aprendiz por user_id de IAM.
+      description: >-
+        Endpoint interno servicio-a-servicio consumido exclusivamente por
+        iam-service para resolver la ficha activa de un aprendiz sin acceder
+        directamente a la base de datos de actors-service. El flujo posterior
+        hacia scheduling-service usa el JWT emitido por IAM y su claim
+        ficha_id; scheduling-service no consume este endpoint directamente.
+        La operación es de solo lectura y debe protegerse exclusivamente con
+        mTLS entre servicios; no usa Bearer JWT ni features RBAC.
+      security:
+        - mutualTLS: []
+      x-internal: true
+      x-authentication: mtls
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: Identificador del usuario en iam-service.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Aprendiz activo con exactamente una ficha activa.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveFichaByLearnerUser'
+              examples:
+                active_ficha:
+                  value:
+                    learner_id: 00000000-0000-4000-8000-000000000101
+                    ficha_id: 00000000-0000-4000-8000-000000000201
+        '204':
+          description: Aprendiz activo sin ficha activa.
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '500':
+          description: Error tecnico controlado; no debe interpretarse como ausencia de ficha.
+          content:
+            application/json:
+              schema:
+                $ref: '_shared.yaml#/components/schemas/Error'
+
+  # ---------------------------------------------------------------- tracking (own domain)
+  /productive-stages:
+    get:
+      operationId: listProductiveStages
+      tags: [tracking]
+      summary: Lista paginada de etapas productivas.
+      x-required-feature: ACT_ACTIVITY_LOG_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: learner_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: company_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: status_id
+          in: query
+          required: false
+          description: Filtra por estado (FK a actors_parameterization.status).
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Página de etapas productivas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProductiveStage' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createProductiveStage
+      tags: [tracking]
+      summary: Registra el inicio de una etapa productiva.
+      x-required-feature: ACT_PRODUCTIVE_STAGE_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductiveStageCreate' }
+      responses:
+        '201':
+          description: Etapa productiva creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductiveStage' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /productive-stages/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductiveStageId'
+    get:
+      operationId: getProductiveStage
+      tags: [tracking]
+      summary: Detalle de una etapa productiva.
+      x-required-feature: ACT_ACTIVITY_LOG_VIEW
+      responses:
+        '200':
+          description: Etapa productiva.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductiveStage' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateProductiveStage
+      tags: [tracking]
+      summary: Actualiza avance, cierre o interrupción de la etapa productiva.
+      x-required-feature: ACT_PRODUCTIVE_STAGE_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductiveStageUpdate' }
+      responses:
+        '200':
+          description: Etapa productiva actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductiveStage' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /productive-stages/{id}/visits:
+    parameters:
+      - $ref: '#/components/parameters/ProductiveStageId'
+    get:
+      operationId: listCompanyVisits
+      tags: [tracking]
+      summary: Visitas de seguimiento registradas en la etapa productiva.
+      x-required-feature: ACT_ACTIVITY_LOG_VIEW
+      responses:
+        '200':
+          description: Lista de visitas.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CompanyVisit' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: createCompanyVisit
+      tags: [tracking]
+      summary: Registra una visita de seguimiento a la empresa.
+      x-required-feature: ACT_PRODUCTIVE_STAGE_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyVisitCreate' }
+      responses:
+        '201':
+          description: Visita registrada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompanyVisit' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /productive-stages/{id}/visits/{visit_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductiveStageId'
+      - name: visit_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getCompanyVisit
+      tags: [tracking]
+      summary: Detalle de una visita de seguimiento.
+      x-required-feature: ACT_ACTIVITY_LOG_VIEW
+      responses:
+        '200':
+          description: Visita.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompanyVisit' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateCompanyVisit
+      tags: [tracking]
+      summary: Corrige o completa el registro de una visita.
+      x-required-feature: ACT_PRODUCTIVE_STAGE_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyVisitUpdate' }
+      responses:
+        '200':
+          description: Visita actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompanyVisit' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /improvement-plans:
+    get:
+      operationId: listImprovementPlans
+      tags: [tracking]
+      summary: Lista paginada de planes de mejoramiento individual.
+      x-required-feature: ACT_ACTIVITY_LOG_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: instructor_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: learner_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: status_id
+          in: query
+          required: false
+          description: Filtra por estado (FK a actors_parameterization.status).
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Página de planes de mejoramiento.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ActorImprovementPlan' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createImprovementPlan
+      tags: [tracking]
+      summary: Crea un plan de mejoramiento para un instructor o un aprendiz (arco exclusivo).
+      x-required-feature: ACT_PRODUCTIVE_STAGE_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActorImprovementPlanCreate' }
+      responses:
+        '201':
+          description: Plan creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActorImprovementPlan' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /improvement-plans/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: UUID del plan de mejoramiento.
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getImprovementPlan
+      tags: [tracking]
+      summary: Detalle de un plan de mejoramiento.
+      x-required-feature: ACT_ACTIVITY_LOG_VIEW
+      responses:
+        '200':
+          description: Plan de mejoramiento.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActorImprovementPlan' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateImprovementPlan
+      tags: [tracking]
+      summary: Actualiza el avance o cierre del plan de mejoramiento.
+      x-required-feature: ACT_PRODUCTIVE_STAGE_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActorImprovementPlanUpdate' }
+      responses:
+        '200':
+          description: Plan actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActorImprovementPlan' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  # ---------------------------------------------------------------- reports (own domain)
+  /reports/learner-tracking:
+    get:
+      operationId: reportLearnerTracking
+      tags: [reports]
+      summary: Seguimiento de aprendices por ficha, etapa y estado de inscripción.
+      description: >-
+        Reporte propio del dominio de actores. Cruza `learner`, `learner_ficha_enrollment`
+        (inscripción vigente) y `productive_stage` (si el aprendiz está en etapa
+        productiva). Solo lectura. Inventario — Usuarios: coordinación académica,
+        instructores de seguimiento; Frecuencia: on-demand; Formato: JSON; Fuente:
+        `actors_parameterization.learner`, `learner_ficha_enrollment`, `productive_stage`.
+      x-required-feature: ACT_REPORT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: ficha_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: enrollment_status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, DROPOUT, TRANSFERRED, GRADUATED, CANCELLED]
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de enrollment_date (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de enrollment_date (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Página del reporte de seguimiento.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/LearnerTrackingReportEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /reports/instructor-load:
+    get:
+      operationId: reportInstructorLoad
+      tags: [reports]
+      summary: Capacidad y disponibilidad de instructores.
+      description: >-
+        Reporte propio del dominio de actores. Cruza `instructor` (límite por defecto),
+        `instructor_contract` (límite vigente), `instructor_area`, `competency_assignment`
+        y `instructor_availability_exception` en el rango consultado. No incluye horas
+        efectivamente asignadas (eso vive en scheduling-service). Solo lectura.
+        Inventario — Usuarios: coordinación, scheduling-service (consumo batch);
+        Frecuencia: on-demand; Formato: JSON; Fuente: `actors_parameterization.instructor`,
+        `instructor_contract`, `instructor_area`, `competency_assignment`,
+        `instructor_availability_exception`.
+      x-required-feature: ACT_REPORT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: training_center_id
+          in: query
+          required: false
+          description: Filtra por centro de formación del contrato vigente.
+          schema: { type: string, format: uuid }
+        - name: area
+          in: query
+          required: false
+          schema: { type: string }
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango para excepciones de disponibilidad (inclusive).
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango para excepciones de disponibilidad (exclusive).
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Página del reporte de carga/disponibilidad.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/InstructorLoadReportEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /catalogs:
+    get:
+      operationId: listActorCatalogs
+      tags: [catalogs]
+      summary: Lista catálogos internos usados por el dominio de actores.
+      responses:
+        '200':
+          description: Catálogos disponibles.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+  /catalogs/{catalog_id}/details:
+    get:
+      operationId: listActorCatalogDetails
+      tags: [catalogs]
+      summary: Lista detalles de un catálogo interno del dominio de actores.
+      parameters:
+        - name: catalog_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Detalles del catálogo.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+  /reports/active-catalog:
+    get:
+      operationId: reportActorActiveCatalog
+      tags: [reports]
+      summary: Reporte de catálogos activos usados por actores.
+      responses:
+        '200':
+          description: Reporte generado.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+components:
+  parameters:
+    CompanyId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la empresa.
+      schema: { type: string, format: uuid }
+    InstructorId:
+      name: id
+      in: path
+      required: true
+      description: UUID del instructor.
+      schema: { type: string, format: uuid }
+    LearnerId:
+      name: id
+      in: path
+      required: true
+      description: UUID del aprendiz.
+      schema: { type: string, format: uuid }
+    ProductiveStageId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la etapa productiva.
+      schema: { type: string, format: uuid }
+
+  schemas:
+    Company:
+      type: object
+      required: [id, nit, business_name, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        nit: { type: string, maxLength: 20 }
+        business_name: { type: string, maxLength: 200 }
+        trade_name:
+          type: [string, 'null']
+          maxLength: 200
+        economic_activity:
+          type: [string, 'null']
+          maxLength: 100
+          description: Actividad económica principal (CIIU).
+        address:
+          type: [string, 'null']
+        city_id:
+          type: [string, 'null']
+          format: uuid
+          description: Referencia lógica a Municipality en reference-data-service (sin FK física).
+        contact_name:
+          type: [string, 'null']
+          maxLength: 200
+          description: Nombre del responsable de etapa productiva.
+        contact_email:
+          type: [string, 'null']
+          format: email
+        contact_phone:
+          type: [string, 'null']
+          maxLength: 20
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CompanyCreate:
+      type: object
+      required: [nit, business_name]
+      properties:
+        nit: { type: string, maxLength: 20 }
+        business_name: { type: string, maxLength: 200 }
+        trade_name: { type: string, maxLength: 200 }
+        economic_activity: { type: string, maxLength: 100 }
+        address: { type: string }
+        city_id: { type: string, format: uuid }
+        contact_name: { type: string, maxLength: 200 }
+        contact_email: { type: string, format: email }
+        contact_phone: { type: string, maxLength: 20 }
+
+    CompanyUpdate:
+      type: object
+      properties:
+        business_name: { type: string, maxLength: 200 }
+        trade_name: { type: string, maxLength: 200 }
+        economic_activity: { type: string, maxLength: 100 }
+        address: { type: string }
+        city_id: { type: string, format: uuid }
+        contact_name: { type: string, maxLength: 200 }
+        contact_email: { type: string, format: email }
+        contact_phone: { type: string, maxLength: 20 }
+        is_active: { type: boolean }
+
+    Instructor:
+      type: object
+      required:
+        [id, user_id, document_type, document_number, first_name, last_name, email,
+         default_max_hours_per_week, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id:
+          type: string
+          format: uuid
+          description: Referencia lógica a user.id en iam-service (sin FK física).
+        document_type:
+          type: string
+          enum: [CC, CE, PA, PE]
+        document_number: { type: string, maxLength: 20 }
+        first_name: { type: string, maxLength: 100 }
+        last_name: { type: string, maxLength: 100 }
+        full_name:
+          type: string
+          readOnly: true
+          description: Derivado de first_name + last_name.
+        email: { type: string, format: email }
+        phone:
+          type: [string, 'null']
+          maxLength: 20
+        default_max_hours_per_week:
+          type: number
+          minimum: 0
+          description: Carga máxima autorizada por defecto; el contrato vigente puede sobrescribirla.
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    InstructorCreate:
+      type: object
+      required: [user_id, document_type, document_number, first_name, last_name, email, default_max_hours_per_week]
+      properties:
+        user_id: { type: string, format: uuid }
+        document_type:
+          type: string
+          enum: [CC, CE, PA, PE]
+        document_number: { type: string, maxLength: 20 }
+        first_name: { type: string, maxLength: 100 }
+        last_name: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        phone: { type: string, maxLength: 20 }
+        default_max_hours_per_week: { type: number, minimum: 0 }
+
+    InstructorUpdate:
+      type: object
+      properties:
+        document_type:
+          type: string
+          enum: [CC, CE, PA, PE]
+        document_number: { type: string, maxLength: 20 }
+        first_name: { type: string, maxLength: 100 }
+        last_name: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        phone: { type: string, maxLength: 20 }
+        default_max_hours_per_week: { type: number, minimum: 0 }
+        is_active: { type: boolean }
+
+    InstructorArea:
+      type: object
+      required: [id, instructor_id, area_name, is_primary, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        instructor_id: { type: string, format: uuid }
+        area_name: { type: string, maxLength: 100 }
+        is_primary: { type: boolean }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    InstructorAreaCreate:
+      type: object
+      required: [area_name]
+      properties:
+        area_name: { type: string, maxLength: 100 }
+        is_primary: { type: boolean, default: false }
+
+    InstructorContract:
+      type: object
+      required: [id, instructor_id, contract_type, start_date, training_center_id, is_current, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        instructor_id: { type: string, format: uuid }
+        contract_type:
+          type: string
+          enum: [STAFF, CONTRACTOR, HOURLY]
+          description: STAFF=planta, CONTRACTOR=OPS, HOURLY=hora-cátedra.
+        start_date: { type: string, format: date }
+        end_date:
+          type: [string, 'null']
+          format: date
+        training_center_id:
+          type: string
+          format: uuid
+          description: Referencia lógica a training_center.id en reference-data-service (sin FK física).
+        weekly_hour_limit:
+          type: [number, 'null']
+          description: Límite específico del contrato; fuente autoritativa del límite vigente.
+        is_current: { type: boolean }
+        notes:
+          type: [string, 'null']
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    InstructorContractCreate:
+      type: object
+      required: [contract_type, start_date, training_center_id]
+      properties:
+        contract_type:
+          type: string
+          enum: [STAFF, CONTRACTOR, HOURLY]
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        training_center_id: { type: string, format: uuid }
+        weekly_hour_limit: { type: number }
+        notes: { type: string }
+
+    InstructorContractUpdate:
+      type: object
+      properties:
+        end_date: { type: string, format: date }
+        weekly_hour_limit: { type: number }
+        is_current: { type: boolean }
+        notes: { type: string }
+
+    CompetencyAssignment:
+      type: object
+      required: [id, instructor_id, competency_id, certified_at, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        instructor_id: { type: string, format: uuid }
+        competency_id:
+          type: string
+          format: uuid
+          description: Referencia lógica a competency.id en academic-management-service (sin FK física).
+        certified_at: { type: string, format: date }
+        certification_entity:
+          type: [string, 'null']
+          maxLength: 200
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CompetencyAssignmentCreate:
+      type: object
+      required: [competency_id, certified_at]
+      properties:
+        competency_id: { type: string, format: uuid }
+        certified_at: { type: string, format: date }
+        certification_entity: { type: string, maxLength: 200 }
+
+    InstructorAvailabilityException:
+      type: object
+      required: [id, instructor_id, exception_type, start_datetime, end_datetime, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        instructor_id: { type: string, format: uuid }
+        exception_type:
+          type: string
+          enum: [SICK_LEAVE, VACATION, COMMISSION, PERSONAL_LEAVE, TRAINING, OTHER]
+        start_datetime: { type: string, format: date-time }
+        end_datetime: { type: string, format: date-time }
+        description:
+          type: [string, 'null']
+        approved_by:
+          type: [string, 'null']
+          format: uuid
+          description: Referencia lógica a user.id en iam-service (coordinador que aprobó).
+        created_at: { type: string, format: date-time }
+
+    InstructorAvailabilityExceptionCreate:
+      type: object
+      required: [exception_type, start_datetime, end_datetime]
+      properties:
+        exception_type:
+          type: string
+          enum: [SICK_LEAVE, VACATION, COMMISSION, PERSONAL_LEAVE, TRAINING, OTHER]
+        start_datetime: { type: string, format: date-time }
+        end_datetime: { type: string, format: date-time }
+        description: { type: string }
+        approved_by: { type: string, format: uuid }
+
+    ActivityLogEntry:
+      type: object
+      required: [id, event_type, description, recorded_at]
+      properties:
+        id: { type: string, format: uuid }
+        instructor_id:
+          type: [string, 'null']
+          format: uuid
+        learner_id:
+          type: [string, 'null']
+          format: uuid
+        event_type:
+          type: string
+          maxLength: 60
+          description: 'Ej: STATUS_CHANGED, COMPETENCY_ADDED, STAGE_CHANGED.'
+        description: { type: string }
+        previous_value:
+          type: [string, 'null']
+        new_value:
+          type: [string, 'null']
+        recorded_by:
+          type: [string, 'null']
+          format: uuid
+          description: null = evento del sistema.
+        recorded_at: { type: string, format: date-time }
+
+    Learner:
+      type: object
+      required: [id, user_id, document_type, document_number, first_name, last_name, email, created_at]
+      description: >-
+        El estado de vinculación (enrollment_status_id) y la fecha de vinculación
+        (enrollment_date) NO viven en esta entidad — pertenecen a la inscripción
+        de ficha vigente; ver LearnerFichaEnrollment.
+      properties:
+        id: { type: string, format: uuid }
+        user_id:
+          type: string
+          format: uuid
+          description: Referencia lógica a user.id en iam-service (sin FK física).
+        document_type:
+          type: string
+          enum: [CC, CE, RC, TI]
+        document_number: { type: string, maxLength: 20 }
+        first_name: { type: string, maxLength: 100 }
+        last_name: { type: string, maxLength: 100 }
+        full_name:
+          type: string
+          readOnly: true
+          description: Derivado de first_name + last_name.
+        email: { type: string, format: email }
+        phone:
+          type: [string, 'null']
+          maxLength: 20
+        birth_date:
+          type: [string, 'null']
+          format: date
+        created_at: { type: string, format: date-time }
+
+    LearnerCreate:
+      type: object
+      required: [user_id, document_type, document_number, first_name, last_name, email]
+      properties:
+        user_id: { type: string, format: uuid }
+        document_type:
+          type: string
+          enum: [CC, CE, RC, TI]
+        document_number: { type: string, maxLength: 20 }
+        first_name: { type: string, maxLength: 100 }
+        last_name: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        phone: { type: string, maxLength: 20 }
+        birth_date: { type: string, format: date }
+
+    LearnerUpdate:
+      type: object
+      properties:
+        document_type:
+          type: string
+          enum: [CC, CE, RC, TI]
+        document_number: { type: string, maxLength: 20 }
+        first_name: { type: string, maxLength: 100 }
+        last_name: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        phone: { type: string, maxLength: 20 }
+        birth_date: { type: string, format: date }
+
+    LearnerFichaEnrollment:
+      type: object
+      required: [id, learner_id, ficha_id, enrollment_status_id, stage, enrollment_date, is_current, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        learner_id: { type: string, format: uuid }
+        ficha_id:
+          type: string
+          format: uuid
+          description: Referencia lógica a enrollment_ficha.id en academic-management-service (sin FK física).
+        enrollment_status_id:
+          type: string
+          format: uuid
+          description: >-
+            FK a actors_parameterization.status (status_category del dominio de
+            inscripción de aprendices). Reemplaza el enum plano legado.
+        stage:
+          type: string
+          enum: [INDUCTION, LECTURE, PRODUCTIVE]
+        enrollment_date: { type: string, format: date }
+        completion_date:
+          type: [string, 'null']
+          format: date
+          description: null = inscripción vigente.
+        is_current:
+          type: boolean
+          description: true = inscripción activa; solo una por aprendiz.
+        transfer_reason:
+          type: [string, 'null']
+        created_at: { type: string, format: date-time }
+
+    LearnerFichaEnrollmentCreate:
+      type: object
+      required: [ficha_id, stage, enrollment_date]
+      properties:
+        ficha_id: { type: string, format: uuid }
+        stage:
+          type: string
+          enum: [INDUCTION, LECTURE, PRODUCTIVE]
+        enrollment_date: { type: string, format: date }
+        transfer_reason: { type: string }
+
+    ProductiveStage:
+      type: object
+      required:
+        [id, learner_id, company_id, supervisor_instructor_id, start_date, planned_end_date,
+         total_hours_required, total_hours_completed, status_id, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        learner_id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid }
+        supervisor_instructor_id:
+          type: string
+          format: uuid
+          description: Instructor de seguimiento.
+        start_date: { type: string, format: date }
+        planned_end_date: { type: string, format: date }
+        actual_end_date:
+          type: [string, 'null']
+          format: date
+        total_hours_required: { type: integer, minimum: 0 }
+        total_hours_completed: { type: integer, minimum: 0 }
+        status_id:
+          type: string
+          format: uuid
+          description: FK a actors_parameterization.status. Reemplaza el enum plano legado.
+        interruption_reason:
+          type: [string, 'null']
+          description: Solo si el status vigente corresponde a INTERRUPTED.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ProductiveStageCreate:
+      type: object
+      required: [learner_id, company_id, supervisor_instructor_id, start_date, planned_end_date, total_hours_required]
+      properties:
+        learner_id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid }
+        supervisor_instructor_id: { type: string, format: uuid }
+        start_date: { type: string, format: date }
+        planned_end_date: { type: string, format: date }
+        total_hours_required: { type: integer, minimum: 0 }
+
+    ProductiveStageUpdate:
+      type: object
+      properties:
+        planned_end_date: { type: string, format: date }
+        actual_end_date: { type: string, format: date }
+        total_hours_completed: { type: integer, minimum: 0 }
+        status_id: { type: string, format: uuid }
+        interruption_reason: { type: string }
+
+    CompanyVisit:
+      type: object
+      required: [id, productive_stage_id, instructor_id, visit_number, visit_date, visit_type, learner_performance, has_improvement_plan, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        productive_stage_id: { type: string, format: uuid }
+        instructor_id: { type: string, format: uuid }
+        visit_number:
+          type: integer
+          description: Número de visita (1, 2, 3...).
+        visit_date: { type: string, format: date }
+        visit_type:
+          type: string
+          enum: [IN_PERSON, VIRTUAL, PHONE]
+        learner_performance:
+          type: string
+          enum: [EXCELLENT, GOOD, ACCEPTABLE, DEFICIENT]
+        company_satisfaction:
+          type: [string, 'null']
+          enum: [HIGH, MEDIUM, LOW]
+        observations:
+          type: [string, 'null']
+        next_visit_date:
+          type: [string, 'null']
+          format: date
+        has_improvement_plan: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CompanyVisitCreate:
+      type: object
+      required: [instructor_id, visit_number, visit_date, visit_type, learner_performance]
+      properties:
+        instructor_id: { type: string, format: uuid }
+        visit_number: { type: integer }
+        visit_date: { type: string, format: date }
+        visit_type:
+          type: string
+          enum: [IN_PERSON, VIRTUAL, PHONE]
+        learner_performance:
+          type: string
+          enum: [EXCELLENT, GOOD, ACCEPTABLE, DEFICIENT]
+        company_satisfaction:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+        observations: { type: string }
+        next_visit_date: { type: string, format: date }
+        has_improvement_plan: { type: boolean, default: false }
+
+    CompanyVisitUpdate:
+      type: object
+      properties:
+        learner_performance:
+          type: string
+          enum: [EXCELLENT, GOOD, ACCEPTABLE, DEFICIENT]
+        company_satisfaction:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+        observations: { type: string }
+        next_visit_date: { type: string, format: date }
+        has_improvement_plan: { type: boolean }
+
+    ActorImprovementPlan:
+      type: object
+      required: [id, origin, description, specific_goals, due_date, status_id, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        instructor_id:
+          type: [string, 'null']
+          format: uuid
+          description: Arco exclusivo con learner_id — exactamente uno debe estar poblado.
+        learner_id:
+          type: [string, 'null']
+          format: uuid
+          description: Arco exclusivo con instructor_id — exactamente uno debe estar poblado.
+        origin:
+          type: string
+          enum: [COMPANY_VISIT, PERFORMANCE_REVIEW, TRACKING_SESSION, DISCIPLINARY]
+        origin_reference_id:
+          type: [string, 'null']
+          format: uuid
+          description: ID del company_visit o sesión de origen, si aplica.
+        description: { type: string }
+        specific_goals:
+          type: string
+          description: Metas específicas y verificables.
+        due_date: { type: string, format: date }
+        status_id:
+          type: string
+          format: uuid
+          description: FK a actors_parameterization.status. Reemplaza el enum plano legado.
+        created_by:
+          type: string
+          format: uuid
+          description: Referencia lógica a user.id en iam-service (sin FK física).
+        created_at: { type: string, format: date-time }
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+
+    ActorImprovementPlanCreate:
+      type: object
+      required: [origin, description, specific_goals, due_date]
+      description: >-
+        Debe incluir exactamente uno de instructor_id / learner_id; la violación
+        del arco exclusivo responde 422.
+      properties:
+        instructor_id: { type: string, format: uuid }
+        learner_id: { type: string, format: uuid }
+        origin:
+          type: string
+          enum: [COMPANY_VISIT, PERFORMANCE_REVIEW, TRACKING_SESSION, DISCIPLINARY]
+        origin_reference_id: { type: string, format: uuid }
+        description: { type: string }
+        specific_goals: { type: string }
+        due_date: { type: string, format: date }
+
+    ActorImprovementPlanUpdate:
+      type: object
+      properties:
+        description: { type: string }
+        specific_goals: { type: string }
+        due_date: { type: string, format: date }
+        status_id: { type: string, format: uuid }
+        completed_at: { type: string, format: date-time }
+
+    LearnerTrackingReportEntry:
+      type: object
+      required: [learner_id, document_number, full_name, enrollment_status, ficha_id, stage, ficha_enrollment_date]
+      properties:
+        learner_id: { type: string, format: uuid }
+        document_number: { type: string }
+        full_name: { type: string }
+        enrollment_status:
+          type: string
+          enum: [ACTIVE, DROPOUT, TRANSFERRED, GRADUATED, CANCELLED]
+        ficha_id:
+          type: string
+          format: uuid
+          description: Referencia lógica a academic-management-service.
+        stage:
+          type: string
+          enum: [INDUCTION, LECTURE, PRODUCTIVE]
+        ficha_enrollment_date: { type: string, format: date }
+        productive_stage_status:
+          type: [string, 'null']
+          enum: [ACTIVE, COMPLETED, INTERRUPTED, CANCELLED, null]
+        productive_stage_company_id:
+          type: [string, 'null']
+          format: uuid
+
+    InstructorLoadReportEntry:
+      type: object
+      required: [instructor_id, document_number, full_name, default_max_hours_per_week, active_areas_count, active_competencies_count, active_exceptions_count]
+      properties:
+        instructor_id: { type: string, format: uuid }
+        document_number: { type: string }
+        full_name: { type: string }
+        default_max_hours_per_week: { type: number }
+        current_contract_weekly_hour_limit:
+          type: [number, 'null']
+        training_center_id:
+          type: [string, 'null']
+          format: uuid
+          description: Centro del contrato vigente (reference-data-service).
+        active_areas_count: { type: integer, minimum: 0 }
+        active_competencies_count: { type: integer, minimum: 0 }
+        active_exceptions_count:
+          type: integer
+          minimum: 0
+          description: Excepciones de disponibilidad que solapan el rango from/to consultado.
+
+
+    ActiveLearnersCount:
+      type: object
+      required: [ficha_id, active_learners]
+      properties:
+        ficha_id:
+          type: string
+          format: uuid
+          description: Identificador de la ficha consultada.
+        active_learners:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Numero de aprendices activos con inscripcion vigente en la ficha.
+
+    ActiveFichaByLearnerUser:
+      type: object
+      required: [learner_id, ficha_id]
+      properties:
+        learner_id:
+          type: string
+          format: uuid
+          description: Identificador del perfil de aprendiz en actors-service.
+        ficha_id:
+          type: string
+          format: uuid
+          description: Identificador de la ficha activa del aprendiz.
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT RS256 emitido por iam-service; verificado localmente vía JWKS.
+    mutualTLS:
+      type: mutualTLS
+      description: Autenticacion mTLS obligatoria para endpoints internos servicio-a-servicio.
+
+
+

@@ -1,0 +1,1504 @@
+openapi: 3.1.0
+info:
+  title: Reference Data Service API — Horarios SENA
+  version: 1.0.0
+  description: >-
+    Jerarquía institucional (macrorregión → microrregión → departamento → municipio →
+    centro de formación → unidad institucional), catálogos parametrizables
+    (`catalog`/`catalog_detail`) y parámetros del sistema (EAV). Fuente de verdad del
+    contrato. Alineado con el modelo de datos de reference-data-service y con
+    07-api/guidelines.md. La extensión `x-required-feature` declara el feature RBAC
+    que exige cada operación (ver rbac-design.md, módulo `MOD_REFERENCE`).
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: institutional-hierarchy
+    description: Jerarquía geográfica e institucional (macrorregión…unidad institucional).
+  - name: catalogs
+    description: Catálogos parametrizables y sus valores.
+  - name: parameters
+    description: Parámetros del sistema (patrón EAV).
+  - name: reports
+    description: Reportes propios del dominio de datos de referencia.
+
+paths:
+  # ---------------------------------------------------------------- macroregions
+  /macroregions:
+    get:
+      operationId: listMacroregions
+      tags: [institutional-hierarchy]
+      summary: Lista paginada de macrorregiones.
+      x-required-feature: REF_HIERARCHY_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: code
+          in: query
+          required: false
+          description: Filtra por código SENA exacto.
+          schema: { type: string, maxLength: 10 }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de macrorregiones.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Macroregion' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createMacroregion
+      tags: [institutional-hierarchy]
+      summary: Crea una macrorregión.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MacroregionCreate' }
+      responses:
+        '201':
+          description: Macrorregión creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Macroregion' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /macroregions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MacroregionId'
+    get:
+      operationId: getMacroregion
+      tags: [institutional-hierarchy]
+      summary: Detalle de una macrorregión.
+      x-required-feature: REF_HIERARCHY_VIEW
+      responses:
+        '200':
+          description: Macrorregión.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Macroregion' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateMacroregion
+      tags: [institutional-hierarchy]
+      summary: Actualiza una macrorregión.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MacroregionUpdate' }
+      responses:
+        '200':
+          description: Macrorregión actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Macroregion' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteMacroregion
+      tags: [institutional-hierarchy]
+      summary: Desactiva una macrorregión (soft delete vía is_active).
+      x-required-feature: REF_HIERARCHY_MANAGE
+      responses:
+        '204':
+          description: Macrorregión desactivada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- microregions
+  /microregions:
+    get:
+      operationId: listMicroregions
+      tags: [institutional-hierarchy]
+      summary: Lista paginada de microrregiones.
+      x-required-feature: REF_HIERARCHY_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: macroregion_id
+          in: query
+          required: false
+          description: Filtra por macrorregión padre.
+          schema: { type: string, format: uuid }
+        - name: code
+          in: query
+          required: false
+          schema: { type: string, maxLength: 10 }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de microrregiones.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Microregion' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createMicroregion
+      tags: [institutional-hierarchy]
+      summary: Crea una microrregión.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MicroregionCreate' }
+      responses:
+        '201':
+          description: Microrregión creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Microregion' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /microregions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MicroregionId'
+    get:
+      operationId: getMicroregion
+      tags: [institutional-hierarchy]
+      summary: Detalle de una microrregión.
+      x-required-feature: REF_HIERARCHY_VIEW
+      responses:
+        '200':
+          description: Microrregión.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Microregion' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateMicroregion
+      tags: [institutional-hierarchy]
+      summary: Actualiza una microrregión.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MicroregionUpdate' }
+      responses:
+        '200':
+          description: Microrregión actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Microregion' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteMicroregion
+      tags: [institutional-hierarchy]
+      summary: Desactiva una microrregión (soft delete vía is_active).
+      x-required-feature: REF_HIERARCHY_MANAGE
+      responses:
+        '204':
+          description: Microrregión desactivada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- departments
+  /departments:
+    get:
+      operationId: listDepartments
+      tags: [institutional-hierarchy]
+      summary: Lista paginada de departamentos.
+      x-required-feature: REF_HIERARCHY_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: microregion_id
+          in: query
+          required: false
+          description: Filtra por microrregión padre.
+          schema: { type: string, format: uuid }
+        - name: dane_code
+          in: query
+          required: false
+          description: Filtra por código DANE exacto.
+          schema: { type: string, maxLength: 5 }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de departamentos.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Department' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createDepartment
+      tags: [institutional-hierarchy]
+      summary: Crea un departamento.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DepartmentCreate' }
+      responses:
+        '201':
+          description: Departamento creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Department' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /departments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DepartmentId'
+    get:
+      operationId: getDepartment
+      tags: [institutional-hierarchy]
+      summary: Detalle de un departamento.
+      x-required-feature: REF_HIERARCHY_VIEW
+      responses:
+        '200':
+          description: Departamento.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Department' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateDepartment
+      tags: [institutional-hierarchy]
+      summary: Actualiza un departamento.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DepartmentUpdate' }
+      responses:
+        '200':
+          description: Departamento actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Department' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteDepartment
+      tags: [institutional-hierarchy]
+      summary: Desactiva un departamento (soft delete vía is_active).
+      x-required-feature: REF_HIERARCHY_MANAGE
+      responses:
+        '204':
+          description: Departamento desactivado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- municipalities
+  /municipalities:
+    get:
+      operationId: listMunicipalities
+      tags: [institutional-hierarchy]
+      summary: Lista paginada de municipios.
+      x-required-feature: REF_HIERARCHY_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: department_id
+          in: query
+          required: false
+          description: Filtra por departamento padre.
+          schema: { type: string, format: uuid }
+        - name: dane_code
+          in: query
+          required: false
+          description: Filtra por código DANE exacto.
+          schema: { type: string, maxLength: 8 }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de municipios.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Municipality' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createMunicipality
+      tags: [institutional-hierarchy]
+      summary: Crea un municipio.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MunicipalityCreate' }
+      responses:
+        '201':
+          description: Municipio creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Municipality' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /municipalities/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MunicipalityId'
+    get:
+      operationId: getMunicipality
+      tags: [institutional-hierarchy]
+      summary: Detalle de un municipio.
+      x-required-feature: REF_HIERARCHY_VIEW
+      responses:
+        '200':
+          description: Municipio.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Municipality' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateMunicipality
+      tags: [institutional-hierarchy]
+      summary: Actualiza un municipio.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MunicipalityUpdate' }
+      responses:
+        '200':
+          description: Municipio actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Municipality' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteMunicipality
+      tags: [institutional-hierarchy]
+      summary: Desactiva un municipio (soft delete vía is_active).
+      x-required-feature: REF_HIERARCHY_MANAGE
+      responses:
+        '204':
+          description: Municipio desactivado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- training-centers
+  /training-centers:
+    get:
+      operationId: listTrainingCenters
+      tags: [institutional-hierarchy]
+      summary: Lista paginada de centros de formación.
+      x-required-feature: REF_HIERARCHY_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: municipality_id
+          in: query
+          required: false
+          description: Filtra por municipio padre.
+          schema: { type: string, format: uuid }
+        - name: center_code
+          in: query
+          required: false
+          description: Filtra por código SENA exacto del centro.
+          schema: { type: string, maxLength: 10 }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de centros de formación.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TrainingCenter' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createTrainingCenter
+      tags: [institutional-hierarchy]
+      summary: Crea un centro de formación.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrainingCenterCreate' }
+      responses:
+        '201':
+          description: Centro de formación creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrainingCenter' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /training-centers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TrainingCenterId'
+    get:
+      operationId: getTrainingCenter
+      tags: [institutional-hierarchy]
+      summary: Detalle de un centro de formación.
+      x-required-feature: REF_HIERARCHY_VIEW
+      responses:
+        '200':
+          description: Centro de formación.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrainingCenter' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateTrainingCenter
+      tags: [institutional-hierarchy]
+      summary: Actualiza un centro de formación.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrainingCenterUpdate' }
+      responses:
+        '200':
+          description: Centro de formación actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrainingCenter' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteTrainingCenter
+      tags: [institutional-hierarchy]
+      summary: Desactiva un centro de formación (soft delete vía is_active).
+      x-required-feature: REF_HIERARCHY_MANAGE
+      responses:
+        '204':
+          description: Centro de formación desactivado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- institutional-units
+  /institutional-units:
+    get:
+      operationId: listInstitutionalUnits
+      tags: [institutional-hierarchy]
+      summary: Lista paginada de unidades institucionales.
+      x-required-feature: REF_HIERARCHY_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: training_center_id
+          in: query
+          required: false
+          description: Filtra por centro de formación padre.
+          schema: { type: string, format: uuid }
+        - name: unit_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACADEMIC, ADMINISTRATIVE, MIXED]
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de unidades institucionales.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/InstitutionalUnit' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createInstitutionalUnit
+      tags: [institutional-hierarchy]
+      summary: Crea una unidad institucional.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstitutionalUnitCreate' }
+      responses:
+        '201':
+          description: Unidad institucional creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstitutionalUnit' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /institutional-units/{id}:
+    parameters:
+      - $ref: '#/components/parameters/InstitutionalUnitId'
+    get:
+      operationId: getInstitutionalUnit
+      tags: [institutional-hierarchy]
+      summary: Detalle de una unidad institucional.
+      x-required-feature: REF_HIERARCHY_VIEW
+      responses:
+        '200':
+          description: Unidad institucional.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstitutionalUnit' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateInstitutionalUnit
+      tags: [institutional-hierarchy]
+      summary: Actualiza una unidad institucional.
+      x-required-feature: REF_HIERARCHY_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstitutionalUnitUpdate' }
+      responses:
+        '200':
+          description: Unidad institucional actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstitutionalUnit' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteInstitutionalUnit
+      tags: [institutional-hierarchy]
+      summary: Desactiva una unidad institucional (soft delete vía is_active).
+      x-required-feature: REF_HIERARCHY_MANAGE
+      responses:
+        '204':
+          description: Unidad institucional desactivada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- catalogs
+  /catalogs:
+    get:
+      operationId: listCatalogs
+      tags: [catalogs]
+      summary: Lista paginada de catálogos.
+      x-required-feature: REF_CATALOG_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: code
+          in: query
+          required: false
+          description: 'Filtra por clave de catálogo (ej: MODALITY, SHIFT).'
+          schema: { type: string, maxLength: 50 }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de catálogos.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Catalog' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createCatalog
+      tags: [catalogs]
+      summary: Crea un catálogo.
+      x-required-feature: REF_CATALOG_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CatalogCreate' }
+      responses:
+        '201':
+          description: Catálogo creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Catalog' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /catalogs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CatalogId'
+    get:
+      operationId: getCatalog
+      tags: [catalogs]
+      summary: Detalle de un catálogo.
+      x-required-feature: REF_CATALOG_VIEW
+      responses:
+        '200':
+          description: Catálogo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Catalog' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateCatalog
+      tags: [catalogs]
+      summary: Actualiza un catálogo.
+      x-required-feature: REF_CATALOG_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CatalogUpdate' }
+      responses:
+        '200':
+          description: Catálogo actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Catalog' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteCatalog
+      tags: [catalogs]
+      summary: Desactiva un catálogo (soft delete vía is_active).
+      x-required-feature: REF_CATALOG_MANAGE
+      responses:
+        '204':
+          description: Catálogo desactivado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- catalog details (anidado: catalog_detail no existe fuera de su catalog)
+  /catalogs/{catalog_id}/details:
+    parameters:
+      - name: catalog_id
+        in: path
+        required: true
+        description: UUID del catálogo padre.
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listCatalogDetails
+      tags: [catalogs]
+      summary: Lista paginada de valores de un catálogo.
+      x-required-feature: REF_CATALOG_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: code
+          in: query
+          required: false
+          description: 'Filtra por clave del valor (ej: IN_PERSON).'
+          schema: { type: string, maxLength: 50 }
+        - name: is_active
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Página de valores del catálogo.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/CatalogDetail' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: createCatalogDetail
+      tags: [catalogs]
+      summary: Agrega un valor a un catálogo.
+      x-required-feature: REF_CATALOG_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CatalogDetailCreate' }
+      responses:
+        '201':
+          description: Valor de catálogo creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogDetail' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /catalogs/{catalog_id}/details/{id}:
+    parameters:
+      - name: catalog_id
+        in: path
+        required: true
+        description: UUID del catálogo padre.
+        schema: { type: string, format: uuid }
+      - name: id
+        in: path
+        required: true
+        description: UUID del valor de catálogo.
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getCatalogDetail
+      tags: [catalogs]
+      summary: Detalle de un valor de catálogo.
+      x-required-feature: REF_CATALOG_VIEW
+      responses:
+        '200':
+          description: Valor de catálogo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogDetail' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateCatalogDetail
+      tags: [catalogs]
+      summary: Actualiza un valor de catálogo.
+      x-required-feature: REF_CATALOG_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CatalogDetailUpdate' }
+      responses:
+        '200':
+          description: Valor de catálogo actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogDetail' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteCatalogDetail
+      tags: [catalogs]
+      summary: Desactiva un valor de catálogo (soft delete vía is_active).
+      x-required-feature: REF_CATALOG_MANAGE
+      responses:
+        '204':
+          description: Valor de catálogo desactivado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- parameters
+  /parameters:
+    get:
+      operationId: listParameters
+      tags: [parameters]
+      summary: Lista paginada de parámetros del sistema.
+      x-required-feature: REF_PARAMETER_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: key
+          in: query
+          required: false
+          description: 'Filtra por clave exacta (ej: MAX_HOURS_PER_WEEK).'
+          schema: { type: string, maxLength: 100 }
+        - name: value_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [integer, string, boolean, json]
+      responses:
+        '200':
+          description: Página de parámetros.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Parameter' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createParameter
+      tags: [parameters]
+      summary: Crea un parámetro del sistema.
+      x-required-feature: REF_PARAMETER_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ParameterCreate' }
+      responses:
+        '201':
+          description: Parámetro creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Parameter' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /parameters/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ParameterId'
+    get:
+      operationId: getParameter
+      tags: [parameters]
+      summary: Detalle de un parámetro del sistema.
+      x-required-feature: REF_PARAMETER_VIEW
+      responses:
+        '200':
+          description: Parámetro.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Parameter' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateParameter
+      tags: [parameters]
+      summary: Actualiza el valor de un parámetro del sistema.
+      description: >-
+        No expone DELETE: la tabla `parameter` no tiene `is_active`/`deleted_at`
+        (ver data-model.md). Los valores se superseden vía PUT, no se eliminan.
+      x-required-feature: REF_PARAMETER_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ParameterUpdate' }
+      responses:
+        '200':
+          description: Parámetro actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Parameter' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  # ---------------------------------------------------------------- reports (own domain)
+  /reports/active-catalog:
+    get:
+      operationId: reportActiveCatalog
+      tags: [reports]
+      summary: Inventario de catálogos activos con sus valores activos.
+      description: >-
+        Reporte propio del dominio de datos de referencia sobre `catalog` +
+        `catalog_detail` (solo filas con `is_active = true`). Permite precargar de una
+        sola llamada todos los selects/dropdowns parametrizados en vez de resolver
+        `catalog_detail` por catálogo (N+1). Solo lectura.
+        Inventario — Consumidores: frontend (selects), academic-management-service,
+        training-environment-service, actors-service; Frecuencia: al iniciar sesión /
+        cacheado con TTL en el consumidor; Formato: JSON; Fuente: `catalog` +
+        `catalog_detail`.
+      x-required-feature: REF_CATALOG_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - name: catalog_code
+          in: query
+          required: false
+          description: Limita el reporte a un único catálogo por código.
+          schema: { type: string, maxLength: 50 }
+      responses:
+        '200':
+          description: Página de catálogos activos con sus valores activos.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ActiveCatalogReportEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+  /health/live:
+    get:
+      operationId: live
+      tags: [health]
+      summary: Liveness probe del servicio.
+      security: []
+      responses:
+        '200':
+          description: Servicio vivo.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /health:
+    get:
+      operationId: health
+      tags: [health]
+      summary: Alias de liveness probe.
+      security: []
+      responses:
+        '200':
+          description: Servicio vivo.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /health/ready:
+    get:
+      operationId: ready
+      tags: [health]
+      summary: Readiness probe con verificación de dependencias.
+      security: []
+      responses:
+        '200':
+          description: Dependencias listas.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '503':
+          description: Alguna dependencia no está lista.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+components:
+  parameters:
+    MacroregionId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la macrorregión.
+      schema: { type: string, format: uuid }
+    MicroregionId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la microrregión.
+      schema: { type: string, format: uuid }
+    DepartmentId:
+      name: id
+      in: path
+      required: true
+      description: UUID del departamento.
+      schema: { type: string, format: uuid }
+    MunicipalityId:
+      name: id
+      in: path
+      required: true
+      description: UUID del municipio.
+      schema: { type: string, format: uuid }
+    TrainingCenterId:
+      name: id
+      in: path
+      required: true
+      description: UUID del centro de formación.
+      schema: { type: string, format: uuid }
+    InstitutionalUnitId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la unidad institucional.
+      schema: { type: string, format: uuid }
+    CatalogId:
+      name: id
+      in: path
+      required: true
+      description: UUID del catálogo.
+      schema: { type: string, format: uuid }
+    ParameterId:
+      name: id
+      in: path
+      required: true
+      description: UUID del parámetro.
+      schema: { type: string, format: uuid }
+
+  schemas:
+    # ---------------------------------------------------- jerarquía institucional
+    Macroregion:
+      type: object
+      required: [id, name, code, is_active]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+        code: { type: string, maxLength: 10, description: UNIQUE; código SENA. }
+        is_active: { type: boolean }
+
+    MacroregionCreate:
+      type: object
+      required: [name, code]
+      properties:
+        name: { type: string, maxLength: 100 }
+        code: { type: string, maxLength: 10 }
+        is_active: { type: boolean, default: true }
+
+    MacroregionUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 100 }
+        code: { type: string, maxLength: 10 }
+        is_active: { type: boolean }
+
+    Microregion:
+      type: object
+      required: [id, macroregion_id, name, code, is_active]
+      properties:
+        id: { type: string, format: uuid }
+        macroregion_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+        code: { type: string, maxLength: 10, description: UNIQUE dentro de la macrorregión padre. }
+        is_active: { type: boolean }
+
+    MicroregionCreate:
+      type: object
+      required: [macroregion_id, name, code]
+      properties:
+        macroregion_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+        code: { type: string, maxLength: 10 }
+        is_active: { type: boolean, default: true }
+
+    MicroregionUpdate:
+      type: object
+      properties:
+        macroregion_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+        code: { type: string, maxLength: 10 }
+        is_active: { type: boolean }
+
+    Department:
+      type: object
+      required: [id, microregion_id, name, dane_code, is_active]
+      properties:
+        id: { type: string, format: uuid }
+        microregion_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+        dane_code: { type: string, maxLength: 5, description: UNIQUE nacional; código DANE del departamento. }
+        is_active: { type: boolean }
+
+    DepartmentCreate:
+      type: object
+      required: [microregion_id, name, dane_code]
+      properties:
+        microregion_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+        dane_code: { type: string, maxLength: 5 }
+        is_active: { type: boolean, default: true }
+
+    DepartmentUpdate:
+      type: object
+      properties:
+        microregion_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+        dane_code: { type: string, maxLength: 5 }
+        is_active: { type: boolean }
+
+    Municipality:
+      type: object
+      required: [id, department_id, name, dane_code, is_active]
+      properties:
+        id: { type: string, format: uuid }
+        department_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 150 }
+        dane_code: { type: string, maxLength: 8, description: UNIQUE nacional; código DANE del municipio. }
+        is_active: { type: boolean }
+
+    MunicipalityCreate:
+      type: object
+      required: [department_id, name, dane_code]
+      properties:
+        department_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 150 }
+        dane_code: { type: string, maxLength: 8 }
+        is_active: { type: boolean, default: true }
+
+    MunicipalityUpdate:
+      type: object
+      properties:
+        department_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 150 }
+        dane_code: { type: string, maxLength: 8 }
+        is_active: { type: boolean }
+
+    TrainingCenter:
+      type: object
+      required: [id, municipality_id, center_code, name, is_active, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        municipality_id: { type: string, format: uuid }
+        center_code: { type: string, maxLength: 10, description: UNIQUE; código SENA del centro; referenciado desde otros servicios. }
+        name: { type: string, maxLength: 200 }
+        address:
+          type: [string, 'null']
+        phone:
+          type: [string, 'null']
+          maxLength: 20
+          description: PII.
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    TrainingCenterCreate:
+      type: object
+      required: [municipality_id, center_code, name]
+      properties:
+        municipality_id: { type: string, format: uuid }
+        center_code: { type: string, maxLength: 10 }
+        name: { type: string, maxLength: 200 }
+        address:
+          type: [string, 'null']
+        phone:
+          type: [string, 'null']
+          maxLength: 20
+        is_active: { type: boolean, default: true }
+
+    TrainingCenterUpdate:
+      type: object
+      properties:
+        municipality_id: { type: string, format: uuid }
+        center_code: { type: string, maxLength: 10 }
+        name: { type: string, maxLength: 200 }
+        address:
+          type: [string, 'null']
+        phone:
+          type: [string, 'null']
+          maxLength: 20
+        is_active: { type: boolean }
+
+    InstitutionalUnit:
+      type: object
+      required: [id, training_center_id, name, unit_type, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        training_center_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 200 }
+        unit_type:
+          type: string
+          enum: [ACADEMIC, ADMINISTRATIVE, MIXED]
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    InstitutionalUnitCreate:
+      type: object
+      required: [training_center_id, name, unit_type]
+      properties:
+        training_center_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 200 }
+        unit_type:
+          type: string
+          enum: [ACADEMIC, ADMINISTRATIVE, MIXED]
+        is_active: { type: boolean, default: true }
+
+    InstitutionalUnitUpdate:
+      type: object
+      properties:
+        training_center_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 200 }
+        unit_type:
+          type: string
+          enum: [ACADEMIC, ADMINISTRATIVE, MIXED]
+        is_active: { type: boolean }
+
+    # ---------------------------------------------------- catálogos
+    Catalog:
+      type: object
+      required: [id, code, name, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, maxLength: 50, description: 'UNIQUE; clave del catálogo (ej: MODALITY, SHIFT).' }
+        name: { type: string, maxLength: 100 }
+        description:
+          type: [string, 'null']
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    CatalogCreate:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, maxLength: 50 }
+        name: { type: string, maxLength: 100 }
+        description:
+          type: [string, 'null']
+        is_active: { type: boolean, default: true }
+
+    CatalogUpdate:
+      type: object
+      properties:
+        code: { type: string, maxLength: 50 }
+        name: { type: string, maxLength: 100 }
+        description:
+          type: [string, 'null']
+        is_active: { type: boolean }
+
+    CatalogDetail:
+      type: object
+      required: [id, catalog_id, code, label, is_active, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        catalog_id: { type: string, format: uuid }
+        code: { type: string, maxLength: 50, description: 'UNIQUE dentro del catálogo padre (ej: IN_PERSON).' }
+        label: { type: string, maxLength: 255 }
+        display_order:
+          type: [integer, 'null']
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    CatalogDetailCreate:
+      type: object
+      required: [code, label]
+      properties:
+        code: { type: string, maxLength: 50 }
+        label: { type: string, maxLength: 255 }
+        display_order:
+          type: [integer, 'null']
+        is_active: { type: boolean, default: true }
+
+    CatalogDetailUpdate:
+      type: object
+      properties:
+        code: { type: string, maxLength: 50 }
+        label: { type: string, maxLength: 255 }
+        display_order:
+          type: [integer, 'null']
+        is_active: { type: boolean }
+
+    # ---------------------------------------------------- parámetros (EAV)
+    Parameter:
+      type: object
+      required: [id, key, value, value_type, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string, maxLength: 100, description: 'UNIQUE (ej: MAX_HOURS_PER_WEEK).' }
+        value:
+          type: string
+          description: Valor almacenado como string; validado según value_type en la capa de aplicación.
+        value_type:
+          type: string
+          enum: [integer, string, boolean, json]
+        description:
+          type: [string, 'null']
+        created_at: { type: string, format: date-time }
+
+    ParameterCreate:
+      type: object
+      required: [key, value, value_type]
+      properties:
+        key: { type: string, maxLength: 100 }
+        value: { type: string }
+        value_type:
+          type: string
+          enum: [integer, string, boolean, json]
+        description:
+          type: [string, 'null']
+
+    ParameterUpdate:
+      type: object
+      properties:
+        value: { type: string }
+        value_type:
+          type: string
+          enum: [integer, string, boolean, json]
+        description:
+          type: [string, 'null']
+
+    # ---------------------------------------------------- reportes
+    ActiveCatalogReportEntry:
+      type: object
+      required: [catalog_code, catalog_name, details]
+      properties:
+        catalog_code: { type: string, maxLength: 50 }
+        catalog_name: { type: string, maxLength: 100 }
+        details:
+          type: array
+          items:
+            type: object
+            required: [code, label]
+            properties:
+              code: { type: string, maxLength: 50 }
+              label: { type: string, maxLength: 255 }
+              display_order:
+                type: [integer, 'null']
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT RS256 emitido por iam-service; verificado localmente vía JWKS.
+
+
+

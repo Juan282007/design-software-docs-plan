@@ -1,0 +1,169 @@
+name: "📋 Historia de Usuario (HU)"
+description: "Registrar una HU siguiendo buenas prácticas Scrum (INVEST, criterios testables, DoR/DoD)."
+title: "HU-<DOM>-NNN: "
+labels: ["HU", "estado:refinamiento"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > **Guía rápida (INVEST):** una buena HU es **I**ndependiente · **N**egociable · **V**aliosa ·
+        > **E**stimable · pequeña (**S**mall, cabe en un sprint) · **T**esteable.
+        > Completa los campos requeridos; asigna la persona en **Assignees** (arriba a la derecha).
+
+  # ---------- Identidad ----------
+  - type: input
+    id: nombre
+    attributes:
+      label: "Nombre de la HU"
+      description: "Título corto orientado al valor (el mismo del issue, sin el código)."
+      placeholder: "Publicar un horario"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tipo
+    attributes:
+      label: "Tipo de HU"
+      options: ["Funcional", "Técnica / habilitadora", "Spike (investigación)", "Mejora", "Bug"]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: dominio
+    attributes:
+      label: "Dominio / MFE"
+      options: ["iam", "reference-data", "academic", "training-environment", "scheduling", "actors", "document", "monitoring", "audit", "shell / transversal"]
+    validations:
+      required: true
+
+  # ---------- Historia ----------
+  - type: textarea
+    id: descripcion
+    attributes:
+      label: "Descripción (rol / acción / valor)"
+      description: "Formato Connextra. El 'para' debe expresar el VALOR de negocio."
+      value: |
+        **Como** <rol>
+        **Quiero** <acción>
+        **Para** <beneficio / valor de negocio>
+    validations:
+      required: true
+
+  - type: textarea
+    id: criterios
+    attributes:
+      label: "Criterios de aceptación (testables — Gherkin)"
+      description: "Uno o varios escenarios verificables. Si no se puede probar, no es un criterio."
+      value: |
+        **Escenario 1: <título>**
+        - **Dado** <contexto / estado inicial>
+        - **Cuando** <acción del usuario>
+        - **Entonces** <resultado esperado observable>
+
+        <!-- agrega más escenarios según haga falta -->
+    validations:
+      required: true
+
+  - type: textarea
+    id: alcance
+    attributes:
+      label: "Alcance (qué SÍ y qué NO entra)"
+      description: "Delimita el MVP de la HU para mantenerla pequeña (INVEST · Small)."
+      value: |
+        **Incluye:**
+        -
+        **No incluye (fuera de alcance):**
+        -
+    validations:
+      required: false
+
+  # ---------- Priorización y estimación ----------
+  - type: dropdown
+    id: prioridad
+    attributes:
+      label: "Prioridad (MoSCoW)"
+      description: "Must = imprescindible para el sprint; Won't = no ahora."
+      options: ["Must", "Should", "Could", "Won't (por ahora)"]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: estimacion
+    attributes:
+      label: "Estimación (puntos de historia · Fibonacci)"
+      description: "Esfuerzo/complejidad relativos, NO horas. Si es >13, divide la HU."
+      options: ["1", "2", "3", "5", "8", "13", "? (necesita refinamiento)"]
+    validations:
+      required: true
+
+  - type: input
+    id: sprint
+    attributes:
+      label: "Sprint / iteración"
+      description: "Sprint objetivo (o 'Backlog' si aún no está planificada)."
+      placeholder: "Sprint 1 · Backlog"
+    validations:
+      required: false
+
+  - type: input
+    id: responsable
+    attributes:
+      label: "Responsable"
+      description: "Persona a cargo del seguimiento (el equipo se auto-organiza; además, usa 'Assignees')."
+      placeholder: "@usuario · Nombre Apellido"
+    validations:
+      required: true
+
+  # ---------- DoR / DoD ----------
+  - type: textarea
+    id: dor
+    attributes:
+      label: "DoR — Definition of Ready (requerida para INICIAR)"
+      description: "El equipo NO toma la HU en un sprint hasta cumplir TODO esto."
+      value: |
+        - [ ] Historia clara y con valor (INVEST · Valiosa)
+        - [ ] Criterios de aceptación definidos y **testables**
+        - [ ] Independiente o con dependencias identificadas/resueltas
+        - [ ] Estimada y **cabe en un sprint** (si no, se divide)
+        - [ ] Endpoint(s) del contrato (07-api) y tabla(s)/campo(s) (06-data/DDL) identificados
+        - [ ] Pantalla(s) del mockup referenciada(s)
+        - [ ] RBAC (feature/rol) identificado
+        - [ ] Sin bloqueantes abiertos · priorizada por el PO
+    validations:
+      required: true
+
+  - type: textarea
+    id: dod
+    attributes:
+      label: "DoD — Definition of Done (incremento entregable → main)"
+      description: "La HU se considera HECHA solo cuando cumple TODO esto."
+      value: |
+        - [ ] Código según estándares del equipo (Conventional Commits)
+        - [ ] **Todos** los criterios de aceptación verificados
+        - [ ] Pruebas (unitarias / integración) escritas y en verde
+        - [ ] Revisado por par (PR aprobado)
+        - [ ] Contrato / DDL respetados (congruencia)
+        - [ ] Documentación / HU actualizada
+        - [ ] Integrado y promovido hasta **main** (develop → qa → staging → main)
+        - [ ] Demostrable en la Sprint Review (potencialmente entregable)
+    validations:
+      required: true
+
+  # ---------- Gobernanza / trazabilidad ----------
+  - type: dropdown
+    id: bloquea_backend
+    attributes:
+      label: "¿Bloquea backend?"
+      description: "¿Debe cerrarse antes de empezar a codificar backend?"
+      options: ["No", "Sí"]
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencias
+    attributes:
+      label: "Dependencias / Trazabilidad (opcional)"
+      description: "HU/épica relacionada, ítems del refinamiento (P-REQ/P-BD/P-MOCK) y PRs de implementación."
+      placeholder: "Depende de HU-REF-003 · deriva de P-BD-01 · implementa en design-software-scheduling-db#NN"
+    validations:
+      required: false

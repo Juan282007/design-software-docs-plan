@@ -1,0 +1,1278 @@
+openapi: 3.1.0
+info:
+  title: Scheduling Service API — Horarios SENA
+  version: 1.0.0
+  description: >-
+    Construcción y publicación de horarios académicos: agregado `schedule` (borrador →
+    revisión → publicado → archivado), sesiones de clase (`class_session`), franjas
+    horarias reutilizables (`time_slot`) y detección/resolución de conflictos
+    (`scheduling_conflict`). Fuente de verdad del contrato. Alineado con el modelo de
+    datos de scheduling-service y con 07-api/guidelines.md. La extensión
+    `x-required-feature` declara el feature RBAC (módulo `MOD_SCHEDULING`) que exige
+    cada operación (o `x-required-feature-any: [A, B]` cuando la operación acepta
+    cualquiera de varios features, p. ej. `SCH_VIEW_ALL` o `SCH_VIEW_OWN`); el `scope_type` asociado en el JWT (GLOBAL / TRAINING_CENTER /
+    OWN_SCHEDULE / OWN_FICHA_AS_LEARNER) acota el filtro de datos aplicado por el
+    servicio, sin exponer features adicionales por scope.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: schedules
+    description: Agregado raíz `schedule` (borrador, revisión, publicación, archivo).
+  - name: sessions
+    description: Sesiones de clase (`class_session`).
+  - name: time-slots
+    description: Catálogo de franjas horarias reutilizables (`time_slot`).
+  - name: conflicts
+    description: Conflictos de horario detectados (`scheduling_conflict`).
+  - name: reports
+    description: Reportes propios del dominio scheduling.
+
+paths:
+  # ---------------------------------------------------------------- schedules
+  /schedules:
+    get:
+      operationId: listSchedules
+      tags: [schedules]
+      summary: Lista paginada de horarios.
+      x-required-feature-any: [SCH_VIEW_ALL, SCH_VIEW_OWN]
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: ficha_id
+          in: query
+          required: false
+          description: >-
+            Referencia externa a `enrollment_ficha.id` en academic-management-service
+            (sin FK física).
+          schema: { type: string, format: uuid }
+        - name: period
+          in: query
+          required: false
+          description: 'Período académico, ej. `2026-1`.'
+          schema: { type: string, maxLength: 10 }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DRAFT, UNDER_REVIEW, PUBLISHED, ARCHIVED]
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de `created_at` (inclusive).
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de `created_at` (exclusive).
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Página de horarios.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Schedule' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createSchedule
+      tags: [schedules]
+      summary: Crea un horario en borrador (`DRAFT`) para una ficha y período.
+      x-required-feature: SCH_CREATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleCreate' }
+      responses:
+        '201':
+          description: Horario creado en `DRAFT`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Schedule' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409':
+          description: >-
+            Ya existe un horario `PUBLISHED` para la misma `ficha_id` + `period` (el
+            índice único parcial solo admite un publicado a la vez).
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /schedules/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ScheduleId'
+    get:
+      operationId: getSchedule
+      tags: [schedules]
+      summary: Obtiene un horario por id.
+      x-required-feature-any: [SCH_VIEW_ALL, SCH_VIEW_OWN]
+      responses:
+        '200':
+          description: Horario.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Schedule' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateSchedule
+      tags: [schedules]
+      summary: Edita metadatos del borrador (`name`); requiere `row_version` vigente.
+      x-required-feature: SCH_EDIT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleUpdate' }
+      responses:
+        '200':
+          description: Horario actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Schedule' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409':
+          description: >-
+            `SCHEDULE_IMMUTABLE` (el horario está `PUBLISHED`) o `ROW_VERSION_MISMATCH`
+            (edición concurrente).
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteSchedule
+      tags: [schedules]
+      summary: Elimina (soft delete) un horario en `DRAFT`.
+      x-required-feature: SCH_DELETE_DRAFT
+      parameters:
+        - name: row_version
+          in: query
+          required: true
+          description: '`row_version` vigente del horario (bloqueo optimista).'
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '204':
+          description: Horario eliminado.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409':
+          description: >-
+            `SCHEDULE_IMMUTABLE` (solo se puede eliminar en `DRAFT`) o
+            `ROW_VERSION_MISMATCH`.
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+
+  /schedules/{id}/validate:
+    parameters:
+      - $ref: '#/components/parameters/ScheduleId'
+    post:
+      operationId: validateSchedule
+      tags: [schedules]
+      summary: >-
+        Ejecuta la validación síncrona final de conflictos y pasa el horario a
+        `UNDER_REVIEW`.
+      x-required-feature: SCH_EDIT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RowVersionRequest' }
+      responses:
+        '200':
+          description: Horario en `UNDER_REVIEW` (puede incluir conflictos detectados).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Schedule' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`SCHEDULE_IMMUTABLE` o `ROW_VERSION_MISMATCH`.'
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /schedules/{id}/publish:
+    parameters:
+      - $ref: '#/components/parameters/ScheduleId'
+    post:
+      operationId: publishSchedule
+      tags: [schedules]
+      summary: >-
+        Publica el horario (`UNDER_REVIEW → PUBLISHED`); emite
+        `scheduling.schedule.published` vía Outbox.
+      x-required-feature: SCH_PUBLISH
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RowVersionRequest' }
+      responses:
+        '200':
+          description: Horario publicado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Schedule' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409':
+          description: >-
+            `UNRESOLVED_CONFLICTS` (hay conflictos sin resolver), `SCHEDULE_IMMUTABLE`
+            (no está en `UNDER_REVIEW`) o `ROW_VERSION_MISMATCH`.
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+
+  /schedules/{id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/ScheduleId'
+    post:
+      operationId: archiveSchedule
+      tags: [schedules]
+      summary: Archiva el horario (`PUBLISHED → ARCHIVED`).
+      x-required-feature: SCH_ARCHIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RowVersionRequest' }
+      responses:
+        '200':
+          description: Horario archivado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Schedule' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`SCHEDULE_IMMUTABLE` (no está `PUBLISHED`) o `ROW_VERSION_MISMATCH`.'
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+
+  /schedules/{id}/sessions:
+    parameters:
+      - $ref: '#/components/parameters/ScheduleId'
+    get:
+      operationId: listScheduleSessions
+      tags: [sessions]
+      summary: Lista paginada de sesiones de un horario.
+      x-required-feature-any: [SCH_VIEW_ALL, SCH_VIEW_OWN]
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, CANCELLED]
+      responses:
+        '200':
+          description: Página de sesiones del horario.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Session' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    post:
+      operationId: addScheduleSession
+      tags: [sessions]
+      summary: >-
+        Agrega una sesión al borrador. `start_time`, `end_time` y `day_of_week` se
+        copian de `time_slot` y son inmutables tras la creación.
+      x-required-feature: SCH_EDIT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionCreate' }
+      responses:
+        '201':
+          description: Sesión creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409':
+          description: >-
+            `SCHEDULE_IMMUTABLE` (el horario no está en `DRAFT`) o doble-booking de
+            instructor/ambiente detectado por el `EXCLUDE` constraint
+            (`INSTRUCTOR_DOUBLE_BOOKED` / `ENVIRONMENT_DOUBLE_BOOKED`).
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /schedules/{id}/conflicts:
+    parameters:
+      - $ref: '#/components/parameters/ScheduleId'
+    get:
+      operationId: listScheduleConflicts
+      tags: [conflicts]
+      summary: Lista paginada de conflictos detectados en el borrador.
+      x-required-feature: SCH_CONFLICT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: is_resolved
+          in: query
+          required: false
+          schema: { type: boolean }
+        - name: conflict_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [INSTRUCTOR_DOUBLE_BOOKED, ENVIRONMENT_DOUBLE_BOOKED, SESSIONS_OVERLAP, ENVIRONMENT_MAINTENANCE, INSTRUCTOR_UNAVAILABLE, INSTRUCTOR_TRAVEL_CONFLICT]
+      responses:
+        '200':
+          description: Página de conflictos.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/SchedulingConflict' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- sessions
+  /sessions:
+    get:
+      operationId: listSessions
+      tags: [sessions]
+      summary: Lista paginada de sesiones de clase (todas las que el scope permita).
+      x-required-feature-any: [SCH_VIEW_ALL, SCH_VIEW_OWN]
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: schedule_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: instructor_id
+          in: query
+          required: false
+          description: >-
+            Referencia externa a `instructor.id` en actors-service (sin FK física).
+          schema: { type: string, format: uuid }
+        - name: environment_id
+          in: query
+          required: false
+          description: >-
+            Referencia externa a `environment.id` en training-environment-service (sin
+            FK física).
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, CANCELLED]
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de `session_date` (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de `session_date` (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Página de sesiones.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Session' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+
+  /sessions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      operationId: getSession
+      tags: [sessions]
+      summary: Obtiene una sesión de clase por id.
+      x-required-feature-any: [SCH_VIEW_ALL, SCH_VIEW_OWN]
+      responses:
+        '200':
+          description: Sesión.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateSession
+      tags: [sessions]
+      summary: >-
+        Edita una sesión del borrador (`notes` y reasignación de instructor / ambiente
+        / franja).
+      x-required-feature: SCH_EDIT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionUpdate' }
+      responses:
+        '200':
+          description: Sesión actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409':
+          description: >-
+            `SCHEDULE_IMMUTABLE` (el horario padre no está en `DRAFT`) o
+            doble-booking de instructor/ambiente.
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteSession
+      tags: [sessions]
+      summary: Elimina (soft delete) una sesión del borrador.
+      x-required-feature: SCH_EDIT
+      responses:
+        '204':
+          description: Sesión eliminada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409':
+          description: '`SCHEDULE_IMMUTABLE` (el horario padre no está en `DRAFT`).'
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+
+  /sessions/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      operationId: cancelSession
+      tags: [sessions]
+      summary: >-
+        Cancela la sesión (`ACTIVE → CANCELLED`); emite
+        `scheduling.class_session.cancelled` vía Outbox.
+      x-required-feature: SCH_EDIT
+      responses:
+        '200':
+          description: Sesión cancelada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409':
+          description: La sesión ya está `CANCELLED`.
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+
+  # ---------------------------------------------------------------- time-slots
+  /time-slots:
+    get:
+      operationId: listTimeSlots
+      tags: [time-slots]
+      summary: Lista paginada de franjas horarias.
+      x-required-feature: SCH_VIEW_ALL
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: day_of_week
+          in: query
+          required: false
+          description: '1=lunes … 7=domingo.'
+          schema: { type: integer, minimum: 1, maximum: 7 }
+        - name: shift
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DAY, NIGHT, MIXED]
+      responses:
+        '200':
+          description: Página de franjas horarias.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TimeSlot' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+    post:
+      operationId: createTimeSlot
+      tags: [time-slots]
+      summary: Crea una franja horaria reutilizable.
+      x-required-feature: SCH_CREATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TimeSlotCreate' }
+      responses:
+        '201':
+          description: Franja creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimeSlot' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+
+  /time-slots/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TimeSlotId'
+    get:
+      operationId: getTimeSlot
+      tags: [time-slots]
+      summary: Obtiene una franja horaria por id.
+      x-required-feature: SCH_VIEW_ALL
+      responses:
+        '200':
+          description: Franja horaria.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimeSlot' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+    put:
+      operationId: updateTimeSlot
+      tags: [time-slots]
+      summary: Edita una franja horaria.
+      x-required-feature: SCH_EDIT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TimeSlotUpdate' }
+      responses:
+        '200':
+          description: Franja actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimeSlot' }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_shared.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+    delete:
+      operationId: deleteTimeSlot
+      tags: [time-slots]
+      summary: Elimina (soft delete) una franja horaria no referenciada por sesiones activas.
+      x-required-feature: SCH_EDIT
+      responses:
+        '204':
+          description: Franja eliminada.
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409':
+          description: La franja está referenciada por sesiones de clase activas.
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+
+  # ---------------------------------------------------------------- conflicts
+  /conflicts/{id}/resolve:
+    parameters:
+      - $ref: '#/components/parameters/ConflictId'
+    post:
+      operationId: resolveConflict
+      tags: [conflicts]
+      summary: Marca un conflicto como resuelto (`is_resolved = true`).
+      x-required-feature: SCH_CONFLICT_RESOLVE
+      responses:
+        '200':
+          description: Conflicto resuelto.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SchedulingConflict' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+        '409':
+          description: El conflicto ya está resuelto.
+          content:
+            application/json:
+              schema: { $ref: '_shared.yaml#/components/schemas/Error' }
+
+  # ---------------------------------------------------------------- reports (own domain)
+  /reports/schedule-by-instructor:
+    get:
+      operationId: reportScheduleByInstructor
+      tags: [reports]
+      summary: Carga de sesiones agregada por instructor.
+      description: >-
+        Reporte propio del dominio scheduling sobre `class_session`, agregado por
+        `instructor_id`. Solo lectura. Inventario — Usuarios: coordinadores académicos
+        y jefes de área; Frecuencia: on-demand/semanal; Formato: JSON; Fuente:
+        `class_session`.
+      x-required-feature: SCH_REPORT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: instructor_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de `session_date` (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de `session_date` (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Página del reporte de carga por instructor.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScheduleByInstructorEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /reports/schedule-by-ficha:
+    get:
+      operationId: reportScheduleByFicha
+      tags: [reports]
+      summary: Estado y resumen de sesiones del horario por ficha.
+      description: >-
+        Reporte propio del dominio scheduling sobre `schedule` (con conteo derivado de
+        `class_session`), agregado por `ficha_id`. Solo lectura. Inventario — Usuarios:
+        coordinadores académicos y bienestar; Frecuencia: on-demand/diaria; Formato:
+        JSON; Fuente: `schedule` + `class_session`.
+      x-required-feature: SCH_REPORT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: ficha_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: period
+          in: query
+          required: false
+          schema: { type: string, maxLength: 10 }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DRAFT, UNDER_REVIEW, PUBLISHED, ARCHIVED]
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de `created_at` del horario (inclusive).
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de `created_at` del horario (exclusive).
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Página del reporte por ficha.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScheduleByFichaEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /reports/schedule-by-environment:
+    get:
+      operationId: reportScheduleByEnvironment
+      tags: [reports]
+      summary: Carga de sesiones agregada por ambiente de formación.
+      description: >-
+        Reporte propio del dominio scheduling sobre `class_session`, agregado por
+        `environment_id`. Solo lectura. Inventario — Usuarios: gestores de ambientes y
+        coordinadores académicos; Frecuencia: on-demand/semanal; Formato: JSON; Fuente:
+        `class_session`.
+      x-required-feature: SCH_REPORT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: environment_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de `session_date` (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de `session_date` (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Página del reporte de carga por ambiente.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScheduleByEnvironmentEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /reports/schedule-conflicts:
+    get:
+      operationId: reportScheduleConflicts
+      tags: [reports]
+      summary: Conflictos de horario detectados en toda la plataforma (paginación por cursor).
+      description: >-
+        Reporte propio del dominio scheduling sobre la tabla `scheduling_conflict`.
+        Solo lectura. Usa paginación por cursor por ser una colección grande/continua
+        (guidelines §6). Inventario — Usuarios: arquitectura y soporte de plataforma;
+        Frecuencia: on-demand; Formato: JSON; Fuente: `scheduling_conflict`.
+      x-required-feature: SCH_REPORT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/cursor'
+        - $ref: '_shared.yaml#/components/parameters/limit'
+        - name: schedule_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: conflict_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [INSTRUCTOR_DOUBLE_BOOKED, ENVIRONMENT_DOUBLE_BOOKED, SESSIONS_OVERLAP, ENVIRONMENT_MAINTENANCE, INSTRUCTOR_UNAVAILABLE, INSTRUCTOR_TRAVEL_CONFLICT]
+        - name: is_resolved
+          in: query
+          required: false
+          schema: { type: boolean }
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de `detected_at` (inclusive).
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de `detected_at` (exclusive).
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Página de conflictos detectados.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/SchedulingConflict' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/CursorPagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /reports/environment-occupancy:
+    get:
+      operationId: reportEnvironmentOccupancy
+      tags: [reports]
+      summary: Tasa de ocupación de ambientes en un rango de fechas.
+      description: >-
+        Reporte propio del dominio scheduling sobre `class_session` cruzado contra el
+        catálogo `time_slot`, agregado por `environment_id`. Solo lectura. Inventario —
+        Usuarios: gestores de ambientes y subdirectores de centro; Frecuencia:
+        on-demand/mensual; Formato: JSON; Fuente: `class_session` + `time_slot`. Mide la
+        ocupación por sesiones de horario efectivamente programadas a partir de las tablas
+        propias de scheduling; para la disponibilidad/utilización física del ambiente, ver
+        `environment-utilization` en training-environment.yaml.
+      x-required-feature: SCH_REPORT_VIEW
+      parameters:
+        - $ref: '_shared.yaml#/components/parameters/page'
+        - $ref: '_shared.yaml#/components/parameters/page_size'
+        - $ref: '_shared.yaml#/components/parameters/sort'
+        - name: environment_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: Inicio del rango de `session_date` evaluado (inclusive).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Fin del rango de `session_date` evaluado (exclusive).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Página del reporte de ocupación por ambiente.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EnvironmentOccupancyEntry' }
+                  pagination: { $ref: '_shared.yaml#/components/schemas/Pagination' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+
+  /health:
+    get:
+      operationId: health
+      tags: [health]
+      summary: Liveness probe del servicio.
+      security: []
+      responses:
+        '200':
+          description: Servicio vivo.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /ready:
+    get:
+      operationId: ready
+      tags: [health]
+      summary: Readiness probe del servicio.
+      security: []
+      responses:
+        '200':
+          description: Dependencias listas.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '503':
+          description: Alguna dependencia no está lista.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+components:
+  parameters:
+    ScheduleId:
+      name: id
+      in: path
+      required: true
+      description: UUID del horario.
+      schema: { type: string, format: uuid }
+    SessionId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la sesión de clase.
+      schema: { type: string, format: uuid }
+    TimeSlotId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la franja horaria.
+      schema: { type: string, format: uuid }
+    ConflictId:
+      name: id
+      in: path
+      required: true
+      description: UUID del conflicto.
+      schema: { type: string, format: uuid }
+
+  schemas:
+    Schedule:
+      type: object
+      required: [id, ficha_id, period, status, row_version, created_by, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        ficha_id:
+          type: string
+          format: uuid
+          description: >-
+            Referencia externa a `enrollment_ficha.id` en academic-management-service
+            (sin FK física).
+        period:
+          type: string
+          maxLength: 10
+          description: 'Período académico, ej. `2026-1`.'
+        name:
+          type: [string, 'null']
+          maxLength: 200
+        status:
+          type: string
+          enum: [DRAFT, UNDER_REVIEW, PUBLISHED, ARCHIVED]
+        published_at:
+          type: [string, 'null']
+          format: date-time
+        published_by:
+          type: [string, 'null']
+          format: uuid
+          description: UUID de usuario (iam-service) que publicó.
+        row_version:
+          type: integer
+          description: Bloqueo optimista del agregado raíz.
+        created_by:
+          type: string
+          format: uuid
+          description: UUID de usuario (iam-service).
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ScheduleCreate:
+      type: object
+      required: [ficha_id, period]
+      properties:
+        ficha_id: { type: string, format: uuid }
+        period: { type: string, maxLength: 10 }
+        name:
+          type: [string, 'null']
+          maxLength: 200
+
+    ScheduleUpdate:
+      type: object
+      required: [row_version]
+      properties:
+        name:
+          type: [string, 'null']
+          maxLength: 200
+        row_version:
+          type: integer
+          description: '`row_version` vigente esperado; `409` si no coincide.'
+
+    RowVersionRequest:
+      type: object
+      required: [row_version]
+      properties:
+        row_version:
+          type: integer
+          description: '`row_version` vigente esperado; `409` si no coincide.'
+
+    Session:
+      type: object
+      required:
+        - id
+        - schedule_id
+        - competency_id
+        - environment_id
+        - instructor_id
+        - time_slot_id
+        - session_date
+        - day_of_week
+        - start_time
+        - end_time
+        - status
+        - updated_at
+      properties:
+        id: { type: string, format: uuid }
+        schedule_id: { type: string, format: uuid }
+        competency_id:
+          type: string
+          format: uuid
+          description: >-
+            Referencia externa a `competency.id` en academic-management-service (sin
+            FK física).
+        environment_id:
+          type: string
+          format: uuid
+          description: >-
+            Referencia externa a `environment.id` en training-environment-service (sin
+            FK física).
+        instructor_id:
+          type: string
+          format: uuid
+          description: >-
+            Referencia externa a `instructor.id` en actors-service (sin FK física).
+        time_slot_id: { type: string, format: uuid }
+        session_date: { type: string, format: date }
+        day_of_week:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: >-
+            1=lunes … 7=domingo. Copia desnormalizada e inmutable de
+            `time_slot.day_of_week`.
+        start_time:
+          type: string
+          format: time
+          description: Copia desnormalizada e inmutable de `time_slot.start_time`.
+        end_time:
+          type: string
+          format: time
+          description: Copia desnormalizada e inmutable de `time_slot.end_time`.
+        status:
+          type: string
+          enum: [ACTIVE, CANCELLED]
+        notes:
+          type: [string, 'null']
+        updated_at: { type: string, format: date-time }
+
+    SessionCreate:
+      type: object
+      required: [competency_id, environment_id, instructor_id, time_slot_id, session_date]
+      properties:
+        competency_id: { type: string, format: uuid }
+        environment_id: { type: string, format: uuid }
+        instructor_id: { type: string, format: uuid }
+        time_slot_id: { type: string, format: uuid }
+        session_date: { type: string, format: date }
+        notes:
+          type: [string, 'null']
+
+    SessionUpdate:
+      type: object
+      properties:
+        instructor_id: { type: string, format: uuid }
+        environment_id: { type: string, format: uuid }
+        time_slot_id: { type: string, format: uuid }
+        notes:
+          type: [string, 'null']
+
+    TimeSlot:
+      type: object
+      required: [id, name, day_of_week, start_time, end_time, shift]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 50 }
+        day_of_week:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: 1=lunes … 7=domingo.
+        start_time: { type: string, format: time }
+        end_time: { type: string, format: time }
+        shift:
+          type: string
+          enum: [DAY, NIGHT, MIXED]
+
+    TimeSlotCreate:
+      type: object
+      required: [name, day_of_week, start_time, end_time, shift]
+      properties:
+        name: { type: string, maxLength: 50 }
+        day_of_week: { type: integer, minimum: 1, maximum: 7 }
+        start_time: { type: string, format: time }
+        end_time: { type: string, format: time }
+        shift:
+          type: string
+          enum: [DAY, NIGHT, MIXED]
+
+    TimeSlotUpdate:
+      type: object
+      required: [name, day_of_week, start_time, end_time, shift]
+      properties:
+        name: { type: string, maxLength: 50 }
+        day_of_week: { type: integer, minimum: 1, maximum: 7 }
+        start_time: { type: string, format: time }
+        end_time: { type: string, format: time }
+        shift:
+          type: string
+          enum: [DAY, NIGHT, MIXED]
+
+    SchedulingConflict:
+      type: object
+      required: [id, schedule_id, session_a_id, conflict_type, description, is_resolved, detected_at]
+      properties:
+        id: { type: string, format: uuid }
+        schedule_id: { type: string, format: uuid }
+        session_a_id: { type: string, format: uuid }
+        session_b_id:
+          type: [string, 'null']
+          format: uuid
+          description: Null si el conflicto es simple (no involucra un segundo par).
+        conflict_type:
+          type: string
+          enum: [INSTRUCTOR_DOUBLE_BOOKED, ENVIRONMENT_DOUBLE_BOOKED, SESSIONS_OVERLAP]
+        description: { type: string }
+        is_resolved: { type: boolean }
+        detected_at: { type: string, format: date-time }
+
+    ScheduleByInstructorEntry:
+      type: object
+      required: [instructor_id, schedule_count, session_count, total_hours]
+      properties:
+        instructor_id:
+          type: string
+          format: uuid
+          description: Referencia externa a actors-service.
+        schedule_count:
+          type: integer
+          description: Cantidad de horarios distintos en los que participa.
+        session_count: { type: integer }
+        total_hours:
+          type: number
+          description: Suma de horas de sesión en el rango filtrado.
+
+    ScheduleByFichaEntry:
+      type: object
+      required: [ficha_id, schedule_id, period, status, session_count]
+      properties:
+        ficha_id:
+          type: string
+          format: uuid
+          description: Referencia externa a academic-management-service.
+        schedule_id: { type: string, format: uuid }
+        period: { type: string, maxLength: 10 }
+        status:
+          type: string
+          enum: [DRAFT, UNDER_REVIEW, PUBLISHED, ARCHIVED]
+        session_count: { type: integer }
+        instructor_count:
+          type: integer
+          description: Instructores distintos asignados en el horario.
+        environment_count:
+          type: integer
+          description: Ambientes distintos usados en el horario.
+
+    ScheduleByEnvironmentEntry:
+      type: object
+      required: [environment_id, session_count, total_hours, ficha_count]
+      properties:
+        environment_id:
+          type: string
+          format: uuid
+          description: Referencia externa a training-environment-service.
+        session_count: { type: integer }
+        total_hours:
+          type: number
+          description: Suma de horas de sesión en el rango filtrado.
+        ficha_count:
+          type: integer
+          description: Fichas distintas atendidas en el ambiente.
+
+    EnvironmentOccupancyEntry:
+      type: object
+      required: [environment_id, period_from, period_to, occupied_slots, total_slots, occupancy_rate]
+      properties:
+        environment_id:
+          type: string
+          format: uuid
+          description: Referencia externa a training-environment-service.
+        period_from: { type: string, format: date }
+        period_to: { type: string, format: date }
+        occupied_slots:
+          type: integer
+          description: Franjas ocupadas por sesiones `ACTIVE` en el rango.
+        total_slots:
+          type: integer
+          description: Franjas disponibles del catálogo `time_slot` en el rango.
+        occupancy_rate:
+          type: number
+          description: 'occupied_slots / total_slots, entre 0 y 1.'
+          minimum: 0
+          maximum: 1
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT RS256 emitido por iam-service; verificado localmente vía JWKS.
+
+
+

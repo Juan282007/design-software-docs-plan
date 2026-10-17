@@ -1,0 +1,124 @@
+﻿openapi: 3.1.0
+info:
+  title: Notification Service API - Horarios SENA
+  version: 0.1.0
+  description: >-
+    Solicitud y consulta de entregas de notificaciones. Notification es el propietario de
+    sent_notification y de sus canales de entrega. La bandeja GET /notifications permanece
+    pendiente hasta formalizar su contrato en shared-contracts.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: notifications
+    description: Solicitud y consulta de entregas.
+  - name: health
+    description: Estado operativo del servicio.
+paths:
+  /notifications:
+    post:
+      operationId: createManualNotification
+      tags: [notifications]
+      summary: Solicita una notificación manual.
+      x-required-feature: NOTIFICATION_SEND
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SentNotificationCreate'
+      responses:
+        '202':
+          description: Solicitud aceptada para envio.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SentNotification'
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '422': { $ref: '_shared.yaml#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '_shared.yaml#/components/responses/TooManyRequests' }
+  /notifications/{id}:
+    parameters:
+      - $ref: '#/components/parameters/NotificationId'
+    get:
+      operationId: getNotification
+      tags: [notifications]
+      summary: Consulta una notificación por UUID.
+      x-required-feature: NOTIFICATION_VIEW
+      responses:
+        '200':
+          description: Notificación enviada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SentNotification'
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '401': { $ref: '_shared.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: '_shared.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_shared.yaml#/components/responses/NotFound' }
+  /health:
+    get:
+      operationId: health
+      tags: [health]
+      security: []
+      summary: Liveness del contenedor API.
+      responses:
+        '200':
+          description: Servicio activo.
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+  /ready:
+    get:
+      operationId: ready
+      tags: [health]
+      security: []
+      summary: Readiness de dependencias del API.
+      responses:
+        '200': { description: Servicio listo. }
+        '400': { $ref: '_shared.yaml#/components/responses/BadRequest' }
+        '503': { description: Dependencia no disponible. }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    NotificationId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la notificación enviada.
+      schema: { type: string, format: uuid }
+  schemas:
+    SentNotification:
+      type: object
+      required: [id, recipient_id, recipient_email, channel, subject, send_status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        generated_alert_id: { type: [string, 'null'], format: uuid }
+        recipient_id: { type: string, format: uuid }
+        recipient_email: { type: string, format: email }
+        channel: { type: string, enum: [EMAIL, IN_APP] }
+        subject: { type: string, maxLength: 300 }
+        body_summary: { type: [string, 'null'] }
+        send_status: { type: string, enum: [PENDING, SENT, FAILED] }
+        failure_reason: { type: [string, 'null'] }
+        sent_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+    SentNotificationCreate:
+      type: object
+      required: [recipient_id, recipient_email, channel, subject]
+      properties:
+        recipient_id: { type: string, format: uuid }
+        recipient_email: { type: string, format: email }
+        channel: { type: string, enum: [EMAIL, IN_APP] }
+        subject: { type: string, maxLength: 300 }
+        body_summary: { type: string }
+        template_code: { type: string }
+        source_service: { type: string }
+        source_event_id: { type: string, format: uuid }
+
+
