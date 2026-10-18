@@ -1,6 +1,6 @@
 # R5 - Contratos y compatibilidad de audit-service
 
-> Estado: 🟡 En progreso | Última actualización: 2026-10-18
+> Estado: ✅ Evidencia técnica completa | Última actualización: 2026-10-18
 > Autor: Juan Pablo Gómez Perdomo | Equipo: Audit
 
 ## Contexto
@@ -51,6 +51,37 @@ go run ./cmd/audit-contract-provider
 Resultado esperado: `200`, `Content-Type: application/json`, una lista paginada y un registro con los UUID, `event_type`, `source_service` y `received_at` definidos en el Pact.
 
 Para la verificación oficial, Docker debe estar iniciado y se ejecuta `pact_verifier_cli` como hace el workflow, usando `pactfoundation/pact-cli:1.5.0.5`. Su resultado esperado es una verificación exitosa del proveedor; si falla una coincidencia de status, headers o cuerpo, el check queda rojo.
+
+## Evidencia E2E de la Parte 1
+
+La validación se ejecutó el 2026-10-18 en un entorno temporal aislado con PostgreSQL 16 y RabbitMQ reales. Las credenciales fueron locales y no se registran en esta evidencia.
+
+| Validación | Resultado |
+| --- | --- |
+| `go test ./...` y compilación de los tres ejecutables | ✅ Verde |
+| Imagen `audit-worker` construida y ejecutada como `nonroot:nonroot` | ✅ Verde |
+| Liquibase `update` sobre base limpia | ✅ 18 changesets aplicados |
+| Liquibase `status --verbose` | ✅ Al día |
+| Liquibase `rollbackCount 1` + `update` | ✅ Rollback y reaplicación correctos |
+| Envelope válido: `audit_event_seen` + `audit_record` | ✅ Verde |
+| Reentrega del mismo `event_id` | ✅ Un solo `audit_record` |
+| Envelope inválido | ✅ Enrutado a `audit.dlq` sin persistencia |
+| Evento válido posterior | ✅ Procesado correctamente |
+| Pruebas reales con `audit_reader` y `audit_writer` | ✅ Verde |
+
+Comando reproducible desde `design-software-audit-service` (con PostgreSQL y RabbitMQ activos):
+
+```powershell
+$env:E2E_AMQP_URL = "amqp://<user>:<password>@localhost:5672/"
+$env:E2E_DATABASE_URL = "postgres://<audit_reader>:<password>@localhost:<port>/<database>?sslmode=disable"
+go test -tags=integration -v ./internal/adapter/in/amqp
+
+$env:TEST_AUDIT_READER_DSN = $env:E2E_DATABASE_URL
+$env:TEST_AUDIT_WRITER_DSN = "postgres://<audit_writer>:<password>@localhost:<port>/<database>?sslmode=disable"
+go test -tags=integration -v ./internal/adapter/out/persistence
+```
+
+La salida esperada contiene `PASS` para `TestWorkerConsumesCanonicalEventE2E`, `TestWorkerDeduplicatesAndRoutesInvalidEnvelopeE2E` y `TestAuditRolePrivilegesAgainstPostgreSQL`.
 
 ## Referencias
 
