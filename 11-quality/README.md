@@ -21,6 +21,7 @@ Define prácticas de pruebas, revisión de código y criterios de calidad.
 |---------|-------------|--------|
 | [testing-strategy.md](./testing-strategy.md) | Estrategia de pruebas por nivel y tipo | 🟡 |
 | [code-review.md](./code-review.md) | Criterios y flujo para revisiones de código | 🟡 |
+| [audit-service-r5-contract-compatibility.md](./audit-service-r5-contract-compatibility.md) | Gates Pact, OpenAPI y JSON Schema del reto R5 de audit-service | 🟡 |
 
 ## Plantillas
 
